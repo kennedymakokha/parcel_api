@@ -8,19 +8,20 @@ interface UserPayload {
     role: string;
     name: string;
     business?: { _id: string };
+    pickup?: { _id: string };
 }
 
 const generateTokens = (user: UserPayload, accessExpiry: string) => {
     const jwtSecret = process.env.JWT_SECRET || "development_secret_key_change_in_prod";
     const refreshSecret = process.env.REFRESH_SECRET || "my_secret_key";
-
     const accessToken = jwt.sign(
         {
             userId: user._id,
             username: user.name,
             role: user.role,
             name: user.name,
-            business: user?.business?._id
+            business: user?.business?._id,
+            pickup: user?.pickup?._id
         },
         jwtSecret,
         { expiresIn: accessExpiry }

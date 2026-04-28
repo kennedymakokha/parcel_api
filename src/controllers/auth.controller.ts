@@ -17,10 +17,11 @@ import { UserhistoryModel } from "../models/userHistory.model";
 
 // User Registration
 
-export const register = async (req: Request, res: Response) => {
+export const register = async (req: Request | any, res: Response) => {
     try {
-        const { username, email, password, phone_number } = req.body;
-        if (!username || !email || !password || !phone_number) {
+        console.log(req.user);
+        const { name, email, password, phone_number } = req.body;
+        if (!name || !phone_number) {
             res.status(400).json("All fields are required")
             return
         }
@@ -28,9 +29,8 @@ export const register = async (req: Request, res: Response) => {
         const userExists: any = await User.findOne(
             {
                 $or: [
-                    { name: phone_number },
+                    { identification_No: req.body.identification_No },
                     { phone_number: phone },
-                    { email: email },
                 ],
 
             }
@@ -47,9 +47,11 @@ export const register = async (req: Request, res: Response) => {
 
         req.body.phone_number = phone
         req.body.activationCode = activationcode
+        req.body.createdBy = req.user ? req.user.userId : null;
+        req.body.business = req.user ? req.user.business : null;
+        req.body.pickup = req.user ? req.user.pickup : null;
         const user: any = new User(req.body);
         const newUser = await user.save();
-
 
         res.status(201).json({ ok: true, message: "User registered successfully", newUser });
         return;
@@ -82,20 +84,71 @@ export const updatePassword = async (req: Request, res: Response) => {
 
     }
 }
-export const getUsers = async (req: Request, res: Response) => {
+export const getUsers = async (req: Request | any, res: Response) => {
     try {
+      
+        const {
+            page = 1,
+            limit = 10,
+            search = '',
+            role,
+        } = req.query;
 
-        const user: any = await User.find();  // Find the user by ID
-        console.log(user)
-        res.status(200).json(user);
-        return;
+        let filter: any = {};
+
+        // 🔐 ROLE-BASED ACCESS
+        if (req.user.role === "admin") {
+            filter.pickup = req.user.pickup;
+            console.log("admin access - filtering by pickup:", req.user.pickup);
+        }
+        else if (req.user.role === "superadmin") {
+            filter.business = req.user.business;
+            console.log("superadmin access - filtering by business:", req.user.business);
+        }
+        else if (req.user.role === "superUser") {
+            // no restriction
+        }
+
+        // ❌ EXCLUDE LOGGED-IN USER
+        filter._id = { $ne: req.user._id };
+
+        // 🎯 Filter by role (optional)
+        const cleanRole = role === 'undefined' ? undefined : role;
+
+        if (cleanRole) {
+            filter.role = cleanRole;
+        }
+
+        // 🔍 Search
+        if (search && search !== '') {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { phone: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } },
+            ];
+        }
+
+        const users = await User.find(filter)
+            .populate("pickup", "pickup_name")
+            .populate("business", "name")
+            .skip((Number(page) - 1) * Number(limit))
+            .limit(Number(limit))
+            .sort({ createdAt: -1 });
+        console.log("users:", users);
+        const total = await User.countDocuments(filter);
+
+        res.status(200).json({
+            users,
+            page: Number(page),
+            totalPages: Math.ceil(total / Number(limit)),
+            total,
+        });
+
     } catch (error) {
-        console.log(error)
+        console.log(error);
         res.status(500).json({ message: "Server error", error });
-        return;
-
     }
-}
+};
 
 export const Update: any = async (req: Request | any, res: Response | any) => {
     try {
@@ -211,13 +264,11 @@ export const verifyuser = async (req: Request, res: Response) => {
 
     }
 }
-
-
 // User Login
 export const login = async (req: Request, res: Response): Promise<void> => {
     try {
         if (req.method !== "POST") {
-             res.status(405).json("Method Not Allowed");
+            res.status(405).json("Method Not Allowed");
         }
 
         const { phone_number, password } = req.body;
@@ -234,22 +285,22 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         }).select("phone_number name role activated password business pickup");
 
         if (!userExists) {
-             res.status(400).json("User Not Found");
+            res.status(400).json("User Not Found");
         }
 
         // Check password
         const isMatch = await bcrypt.compare(password, userExists.password);
         if (!isMatch) {
-             res.status(401).json("Invalid credentials");
+            res.status(401).json("Invalid credentials");
         }
 
         // 🔥 Conditional population
         if (userExists.role === "superadmin") {
             await userExists.populate({
-                path: "business",
-                populate: {
-                    path: "pickUps"
-                }
+                path: "business"
+                // populate: {
+                //     path: "pickup"
+                // }
             });
         } else if (userExists.role === "admin") {
             await userExists.populate("pickup");
@@ -276,17 +327,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         // Remove password before sending response
         userExists.password = undefined;
 
-         res.status(200).json({
+        res.status(200).json({
             ok: true,
             message: "Logged in",
             token: accessToken,
             exp: decoded?.exp,
             user: userExists,
+
         });
 
     } catch (error: any) {
         console.log("Login Error:", error);
-         res.status(500).json({
+        res.status(500).json({
             ok: false,
             message: "Server error",
             error: error.message,
@@ -312,138 +364,6 @@ export const session_Check = async (req: Request, res: Response) => {
     }
 }
 
-export const Bulk = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { users } = req.body;
-
-        if (!users || !Array.isArray(users)) {
-            res.status(400).json({
-                success: false,
-                message: "Users array is required",
-            });
-            return;
-        }
-
-        const processedUsers: any[] = [];
-
-        for (const item of users) {
-            const { phone_number, business_id } = item;
-
-            const phone = await Format_phone_number(phone_number);
-
-            let user = await User.findOne({
-                phone_number: phone,
-            });
-
-            let now = new Date();
-
-            // =====================
-            // CREATE
-            // =====================
-            if (!user) {
-                const activationCode = MakeActivationCode(4);
-
-                const salt = await bcrypt.genSalt(10);
-                const passwordEncrypt = await bcrypt.hash(phone, salt);
-
-                const newUser = new User({
-                    ...item,
-                    business: business_id,
-                    password: passwordEncrypt,
-                    phone_number: phone,
-                    activationCode,
-                    activated: false,
-                });
-
-                const saved = await newUser.save();
-
-                // ✅ CREATE HISTORY
-                await UserhistoryModel.create({
-                    user: saved._id,
-                    phone_number: phone,
-                    business: business_id,
-                    started_at: now,
-                });
-
-                processedUsers.push(saved);
-                continue;
-            }
-
-            // =====================
-            // UPDATE
-            // =====================
-
-            const previousBusiness = user.business?.toString();
-
-            // If deleted_at exists → force deactivation
-            if (user.deleted_at) {
-                user.activated = false;
-            }
-
-            // If deleted AND not activated → reset password
-            if (user.deleted_at && user.activated === false) {
-                const salt = await bcrypt.genSalt(10);
-                user.password = await bcrypt.hash(phone, salt);
-                user.activated = true;
-            }
-
-            // =====================
-            // HANDLE BUSINESS CHANGE
-            // =====================
-            if (previousBusiness !== business_id) {
-                // 
-                const activeHistory = await UserhistoryModel.findOne({
-                    user: user._id,
-                    business: previousBusiness,
-                    ended_at: null,
-                });
-
-                if (activeHistory) {
-                    activeHistory.ended_at = now;
-
-                    // Optional: compute duration
-                    if (activeHistory.started_at) {
-                        activeHistory.duration = new Date(
-                            now.getTime() - activeHistory.started_at.getTime()
-                        );
-                    }
-
-                    await activeHistory.save();
-                }
-
-                // 🟢 Create new history
-                await UserhistoryModel.create({
-                    user: user._id,
-                    phone_number: phone,
-                    business: business_id,
-                    started_at: now,
-                });
-            }
-
-            // Always update business
-            user.business = business_id;
-
-            // Update other fields
-            user = Object.assign(user, item);
-
-            const updated = await user?.save();
-            processedUsers.push(updated);
-        }
-
-        res.status(200).json({
-            success: true,
-            total_processed: processedUsers.length,
-            users: processedUsers,
-        });
-
-    } catch (err: any) {
-        console.error(err);
-        res.status(500).json({
-            success: false,
-            message: err.message,
-        });
-    }
-};
 export const UpdatedSince = async (req: Request | any, res: Response | any) => {
     try {
 

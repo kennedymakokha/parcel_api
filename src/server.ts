@@ -7,9 +7,9 @@ import { Server as IOServer } from "socket.io";
 import { setupSocket } from './config/socket';
 import { connectDB } from "./config/db";
 import authRoutes from './routes/auth.routes';
-
+import parcelRoute from './routes/parcel.route';
 import businessRoute from './routes/business.routes';
-
+import TrucksRoute from './routes/trucks.route'
 import ClocksRoute from './routes/clocks.route'
 import { authenticateToken } from "./middleware/auth.middleware";
 import bodyParser from "body-parser";
@@ -53,9 +53,9 @@ connectDB();
 app.use("/api/auth", authRoutes);
 
 app.use("/api/business", authenticateToken, businessRoute);
-
+app.use("/api/parcel", authenticateToken, parcelRoute);
 app.use("/api/clocks", authenticateToken, ClocksRoute);
-
+app.use("/api/trucks", authenticateToken, TrucksRoute);
 app.use('*', (req, res) => {
   res.status(404).json({ message: 'API endpoint not found' });
 });

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Create, CreatePickup, Get, Get_one, Lock, Trash, Update, } from "../controllers/business.controller";
+import { Create, CreatePickup, Get, Get_one, GetPickups, Lock, Trash, Update, } from "../controllers/business.controller";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -28,6 +28,7 @@ const upload = multer({ storage });
 router.get("/", Get);
 router.post("/", upload.single('logo'), Create);
 router.post("/create/pickup",  CreatePickup);
+router.get("/get/pickups",  GetPickups);
 router.put("/:id", Update);
 router.delete("/:id", Trash);
 router.get("/my-business", Get_one);

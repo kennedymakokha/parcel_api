@@ -104,6 +104,7 @@ export const CreatePickup = async (req: Request | any, res: Response): Promise<v
         let contactPhone = await Format_phone_number(req.body.contact_number);
         req.body.phone_number = phone;
         req.body.contact_number = contactPhone;
+        req.body.business = req.user.business;
         const PhoneExists = await User.findOne({ phone_number: contactPhone, business: req.user.business }).session(session);
         if (PhoneExists) {
             throw new Error("Phone number already exists");
@@ -189,6 +190,29 @@ export const Get = async (req: Request | any, res: Response | any) => {
 
     }
 };
+export const GetPickups = async (req: Request | any, res: Response | any) => {
+
+    try {
+        const { page = 1, limit = 10, } = req.query;
+        const pickups: any = await PickuUpModel.find({ deletedAt: null,business: req.user.business }).skip((page - 1) * limit)
+            .limit(parseInt(limit))
+            .sort({ createdAt: -1 })
+        const total = await PickuUpModel.countDocuments();
+        res.status(201).json(
+            {
+                pickups, page: parseInt(page),
+                totalPages: Math.ceil(total / limit)
+            }
+        );
+        return;
+    } catch (error) {
+        console.log(error)
+        res.status(500).json({ ok: false, message: "Server error", error });
+        return;
+
+    }
+};
+
 
 
 

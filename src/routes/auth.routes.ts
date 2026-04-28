@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { register, logout, refresh, session_Check, updatePassword, activateuser, requestToken, verifyuser, getUsers, Bulk, UpdatedSince, getUser, Update, login } from "../controllers/auth.controller";
+import { register, logout, refresh, session_Check, updatePassword, activateuser, requestToken, verifyuser, getUsers,  UpdatedSince, getUser, Update, login } from "../controllers/auth.controller";
 import { authenticateToken } from "../middleware/auth.middleware";
 
 const router = Router();
@@ -12,7 +12,7 @@ const router = Router();
  *       200:
  *         description: register User
  */
-router.post("/register", register);
+router.post("/register",authenticateToken, register);
 /**
  * @swagger
  * /api/auth/login:
@@ -33,8 +33,8 @@ router.post("/login", login);
  *         description: return logged in user
  */
 router.get("/", session_Check);
-router.get("/users", getUsers);
-router.post("/refresh", refresh);
+router.get("/users", authenticateToken,getUsers);
+router.post("/refresh",authenticateToken, refresh);
 router.post("/reset-password", updatePassword);
 /**
  * @swagger
@@ -60,7 +60,6 @@ router.put("/:id", Update);
 router.post("/verify-otp", verifyuser);
 router.post("/request-otp", requestToken);
 router.post("/logout", logout);
-router.post("/bulk", authenticateToken, Bulk);
 router.get("/updated-since", authenticateToken, UpdatedSince);
 
 

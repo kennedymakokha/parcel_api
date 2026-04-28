@@ -5,7 +5,7 @@ const pickUpScema = new mongoose.Schema({
   phone_number: { type: String },
   working_hrs: { type: String, default: "8-17" },
   contact_number: { type: String },
- 
+  short_code: { type: String },
   latitude: Number,
   longitude: Number,
   state: { type: String, enum: ["active", "inactive"], default: "inactive" },

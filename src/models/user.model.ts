@@ -1,10 +1,11 @@
 import mongoose, { Schema } from "mongoose";
 import bcrypt from "bcryptjs";
 const UserSchema = new mongoose.Schema({
- 
+
   phone_number: { type: String, required: true, unique: true },
   name: { type: String, },
   email: { type: String, },
+  identification_No: { type: String, },
   activationCode: { type: String, },
   createdBy: {
     type: Schema.Types.ObjectId,
@@ -18,10 +19,10 @@ const UserSchema = new mongoose.Schema({
     type: Schema.Types.ObjectId,
     ref: 'pickup_tb'
   },
-  
+
   role: {
     type: String,
-    enum: ["superUser","superadmin", "admin", "storemanager","dispatcher", "sales"],
+    enum: ["superUser", "superadmin", "admin", "storemanager", "dispatcher", "sales", "driver"],
     default: "storemanager"
   },
   activated: { type: Boolean, default: true },
