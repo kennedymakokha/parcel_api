@@ -21,6 +21,16 @@ const ParcelSchema = new mongoose.Schema(
     sender_address: {
       type: String,
     },
+    paid: {
+      type: Boolean,
+      default: false
+    },
+    receiver_signature: {
+      type: String,
+    },
+    receiver_ID: {
+      type: String,
+    },
     receiver_name: {
       type: String,
       required: true,

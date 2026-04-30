@@ -65,6 +65,32 @@ export const Create = async (req: Request | any, res: Response): Promise<void> =
         const user = new User(adminData);
         await user.save({ session });
 
+        // 3. Create HQ Pickup
+        const pickupData = {
+            pickup_name: `${req.body.business_name} HQ`,
+            phone_number: req.body.contact_number,
+            contact_number: req.body.contact_number,
+            business: business._id,
+            createdBy: user._id,
+            state: "active",
+            isHQ: true,
+            logo: imageUrl
+        };
+
+        const pickup = new PickuUpModel(pickupData);
+        const savedPickup = await pickup.save({ session });
+        // 4. Create Socket Room for Pickup
+        const roomName = `pickup_${savedPickup._id}`;
+
+        // optional: emit creation event (if needed elsewhere)
+        const socketIo = getSocketIo();
+        if (socketIo) {
+            socketIo.emit("room_created", {
+                room: roomName,
+                pickupId: savedPickup._id,
+            });
+        }
+
         // If we reach here, everything is successful
         await session.commitTransaction();
         res.status(201).json({ ok: true, message: "Business and Admin added successfully", newbusiness: business });
@@ -74,13 +100,12 @@ export const Create = async (req: Request | any, res: Response): Promise<void> =
         await session.abortTransaction();
 
         // CLEANUP: Delete the uploaded file since the DB record failed
-        const filePath = path.join(__dirname, "../../public/uploads", file.filename);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+        if (file?.filename) {
+            const filePath = path.join(__dirname, "../../public/uploads", file.filename);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
         }
-
-        console.log("Transaction Error:", error);
-
         if (error.message === "BUSINESS_EXISTS") {
             res.status(400).json("Business already exists");
         } else {
@@ -194,7 +219,7 @@ export const GetPickups = async (req: Request | any, res: Response | any) => {
 
     try {
         const { page = 1, limit = 10, } = req.query;
-        const pickups: any = await PickuUpModel.find({ deletedAt: null,business: req.user.business }).skip((page - 1) * limit)
+        const pickups: any = await PickuUpModel.find({ deletedAt: null, business: req.user.business }).skip((page - 1) * limit)
             .limit(parseInt(limit))
             .sort({ createdAt: -1 })
         const total = await PickuUpModel.countDocuments();

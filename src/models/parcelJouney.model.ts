@@ -33,7 +33,7 @@ const parcelJourneySchema = new mongoose.Schema(
         deletedAt: { type: Date, default: null },
         updatedAt: { type: Date, default: null },
 
-    },
+    }, { timestamps: true }
 
 );
 

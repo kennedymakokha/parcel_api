@@ -13,12 +13,30 @@ export const setupSocket = (socketInstance: any) => {
     io = socketInstance;
     io.on("connection", (socket: any) => {
         console.log("SOCKET CONNECTION MADE:", socket.id);
+        const pickupId = socket.handshake.auth?.pickupId;
 
+        if (pickupId) {
+            const roomName = `pickup_${pickupId}`;
+            socket.join(roomName);
+
+            console.log(`Auto-joined ${socket.id} to ${roomName}`);
+        }
         socket.on('registerDevice', (deviceId: any) => {
             console.log(`Device registered: ${deviceId}`);
             connectedDevices[deviceId] = socket.id;
         });
+        socket.on("join_pickup_room", ({ pickupId }: any) => {
+            if (!pickupId) return;
 
+            const roomName = `pickup_${pickupId}`;
+            socket.join(roomName);
+
+            console.log(`Socket ${socket.id} joined pickup room: ${roomName}`);
+
+            socket.to(roomName).emit("user_joined", {
+                message: `User ${socket.id} joined pickup ${pickupId}`
+            });
+        });
         socket.on('join_topic', (topic: any) => {
             socket.join(topic);
             console.log(`User ${socket.id} joined topic: ${topic}`);
@@ -62,4 +80,6 @@ export const emitToDevice = (deviceId: string, event: string, payload: any) => {
         return false;
     }
 };
+
+
 export const getSocketIo = () => io;

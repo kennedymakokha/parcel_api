@@ -14,6 +14,7 @@ const pickUpScema = new mongoose.Schema({
   api_key: { type: String, },
   primary_color: String,
   strictMpesa: { type: Boolean, default: false },
+  isHQ: { type: Boolean, default: false },
   secondary_color: String,
   logo: String,
   master_ke: { type: String, default: "k3f9Jq8sT1vQmZ0uLx7Y2pV+5A1bF4Hq0r9N2wT+6GQ=" },

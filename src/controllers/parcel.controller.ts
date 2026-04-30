@@ -7,6 +7,8 @@ import { ParcelJourneys } from "../models/parcelJouney.model";
 import { Parcels } from "../models/parcel.model";
 import { parcelDriverModel } from "../models/parcelDriverModel";
 import { Trucks } from "../models/trucks.model";
+import moment from "moment";
+import { sendTextMessage } from "../utils/sms_sender.util";
 
 // const [formData, setFormData] = useState<ParcelFormState>({
 //     sender: { name: "", phone: "", address: "" },
@@ -109,28 +111,54 @@ export const registerParcel = async (req: Request | any, res: Response): Promise
 
 export const GetParcels = async (req: Request | any, res: Response | any) => {
   try {
-    const { page = 1, limit = 10, sentFrom, status, search, sentTo } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      sentFrom,
+      status,
+      search,
+      sentTo,
+    } = req.query;
 
     let filter: any = { deletedAt: null };
 
-    // ✅ Filter by pickup (sentFrom)
-    if (sentFrom) {
-      filter.sentFrom = sentFrom;
+    /** ✅ STATUS-BASED LOGIC */
+    if (status === "Pending Collection") {
+      // ONLY sentFrom matters
+      if (sentTo) {
+        filter.pickup = sentTo;
+      }
     }
-    if (sentTo) {
-      filter.pickup = sentTo;
+    else if (status === "Pending Dispatch") {
+      // ONLY sentFrom matters
+      if (sentFrom) {
+        filter.sentFrom = sentFrom;
+      }
+    } else {
+      // Normal case: allow either sentFrom OR sentTo
+      if (sentFrom && sentTo) {
+        filter.$or = [
+          { sentFrom: sentFrom },
+          { pickup: sentTo },
+        ];
+      } else if (sentFrom) {
+        filter.sentFrom = sentFrom;
+      } else if (sentTo) {
+        filter.pickup = sentTo;
+      }
     }
 
-    // ✅ Filter by status (ONLY if provided)
+    /** ✅ Filter by status */
     if (status && status !== '') {
       filter.status = status;
     }
 
-    // ✅ Search by code (case-insensitive)
+    /** ✅ Search */
     if (search && search !== '') {
       filter.code = { $regex: search, $options: 'i' };
     }
 
+    /** ✅ Query */
     const parcels = await Parcels.find(filter)
       .populate("pickup", "pickup_name")
       .populate("sentFrom", "pickup_name")
@@ -147,7 +175,11 @@ export const GetParcels = async (req: Request | any, res: Response | any) => {
     });
   } catch (error) {
     console.log(error);
-    res.status(500).json({ ok: false, message: "Server error", error });
+    res.status(500).json({
+      ok: false,
+      message: "Server error",
+      error,
+    });
   }
 };
 
@@ -437,38 +469,66 @@ export const dispatchParcels = async (req: Request | any, res: Response): Promis
 };
 export const markParcelArrived = async (req: Request | any, res: Response): Promise<void> => {
   try {
-    const { parcelId } = req.params;
-    const parcel: any = await Parcels.findById(parcelId);
-    if (parcel.pickup.toString() !== req?.user.pickup.toString()) {
+    const { id } = req.params;
+
+    const parcel: any = await Parcels.findOne({ code: id });
+
+    if (parcel?.pickup.toString() !== req?.user.pickup.toString()) {
       console.log("Unauthorized arrival attempt by user:", req?.user);
       res.status(404).json({ message: "Parcel not found" });
       return;
     }
-    await Parcels.findByIdAndUpdate(parcelId, {
-      status: "Pending Collection"
+    if (parcel?.status !== "In Transit") {
+      res.status(404).json({ message: "Not in transit" });
+      return;
+    }
+    await Parcels.findOneAndUpdate({ code: id }, {
+      status: "Pending Collection",
+      currentDriver: null,
+      currentTruck: null
     });
-
+    if (!parcel) {
+      res.status(404).json({ message: "Parcel not found" });
+      return;
+    }
+    await sendTextMessage(
+      `Hello ${parcel.reciever_name},Your Parcel has arrived at ${parcel.pickup.pickup_name}.Parcel Code ${parcel.code}.Please  come with your National ID  for pick-up.`,
+      `${parcel.receiver_phone}`,
+      parcel._id,
+      "parcel Delivery"
+    )
     await ParcelJourneys.findOneAndUpdate(
-      { parcel_id: parcelId },
+      { parcel_id: parcel._id },
       { ArrivedAt: new Date(), deliveredTo: req?.user.userId },
     );
 
     res.json({ ok: true, message: "Parcel arrived at destination" });
 
   } catch (error: any) {
+    console.log(error);
     res.status(500).json({ message: "Error updating arrival", error: error.message });
   }
 };
 export const collectParcel = async (req: Request | any, res: Response): Promise<void> => {
   try {
-    const { parcelId } = req.params;
+    const { id } = req.params;
+    if (!req.body.signature || !req.body.ID) {
+      res.status(400).json({ message: "Signature and ID are required" });
+      return;
+    }
+    const parcel: any = await Parcels.findByIdAndUpdate(id, {
+      status: "Collected",
+      receiver_signature: req.body.signature,
+      receiver_ID: req.body.ID,
 
-    await Parcels.findByIdAndUpdate(parcelId, {
-      status: "Collected"
-    });
+    }).populate("pickup", 'pickup_name');
+    if (!parcel) {
+      res.status(404).json({ message: "Parcel not found" });
+      return;
+    }
 
     await ParcelJourneys.findOneAndUpdate(
-      { parcel_id: parcelId },
+      { parcel_id: parcel._id },
       { CollectedAt: new Date(), handedOverBy: req?.user.userId }
     );
 
@@ -476,5 +536,311 @@ export const collectParcel = async (req: Request | any, res: Response): Promise<
 
   } catch (error: any) {
     res.status(500).json({ message: "Error collecting parcel", error: error.message });
+  }
+};
+
+
+export const getParcelEventStats = async (req: Request | any, res: Response): Promise<void> => {
+  try {
+    const {
+      pickupId,
+      filterType = "today",
+      startDate,
+      endDate
+    }: any = req.query
+
+
+    // const pickupId = "64b8c9f1c9d898e4b1a2e5f"; // Replace with actual pickup ID
+    let start, end;
+
+    // 🌍 Global date filter
+    switch (filterType) {
+      case "today":
+        start = moment().startOf("day").toDate();
+        end = moment().endOf("day").toDate();
+        break;
+
+      case "week":
+        start = moment().subtract(7, "days").startOf("day").toDate();
+        end = moment().endOf("day").toDate();
+        break;
+
+      case "month":
+        start = moment().startOf("month").toDate();
+        end = moment().endOf("month").toDate();
+        break;
+
+      case "range":
+        start = moment(startDate).startOf("day").toDate();
+        end = moment(endDate).endOf("day").toDate();
+        break;
+
+      default:
+        throw new Error("Invalid filter");
+    }
+
+
+    const pickupObjectId = mongoose.Types.ObjectId.isValid(pickupId)
+      ? new mongoose.Types.ObjectId(pickupId)
+      : null;
+
+    if (!pickupObjectId) {
+      throw new Error("Invalid pickupId");
+    }
+    const result = await ParcelJourneys.aggregate([
+      {
+        $lookup: {
+          from: "parcels_tbs",
+          localField: "parcel_id",
+          foreignField: "_id",
+          as: "parcel"
+        }
+      },
+      { $unwind: "$parcel" },
+
+      {
+        $match: {
+          deletedAt: null,
+          "parcel.deletedAt": null
+        }
+      },
+
+      {
+        $facet: {
+          // 📦 ORIGIN (sentFrom)
+          dropped: [
+            {
+              $match: {
+                DroppedAt: { $gte: start, $lte: end },
+                "parcel.sentFrom": pickupObjectId
+              }
+            },
+            { $count: "count" }
+          ],
+
+          dispatched: [
+            {
+              $match: {
+                DispatchedAt: { $gte: start, $lte: end },
+                "parcel.sentFrom": pickupObjectId
+              }
+            },
+            { $count: "count" }
+          ],
+
+          // 📍 DESTINATION (pickup)
+          arrived: [
+            {
+              $match: {
+                ArrivedAt: { $gte: start, $lte: end },
+                "parcel.pickup": pickupObjectId
+              }
+            },
+            { $count: "count" }
+          ],
+
+          collected: [
+            {
+              $match: {
+                CollectedAt: { $gte: start, $lte: end },
+                "parcel.pickup": pickupObjectId
+              }
+            },
+            { $count: "count" }
+          ]
+        }
+      }
+    ]);
+
+    const data = result[0];
+
+    const kpis = [
+      { label: "Dropped", value: data.dropped[0]?.count || 0 },
+      { label: "Dispatched", value: data.dispatched[0]?.count || 0 },
+      { label: "Arrived", value: data.arrived[0]?.count || 0 },
+      { label: "Collected", value: data.collected[0]?.count || 0 },
+    ];
+
+    res.json({ data: kpis });
+    return
+
+  } catch (err) {
+    console.error(err);
+    throw err;
+  }
+};
+
+
+export const getFullDashboard = async (req: Request | any, res: Response): Promise<void> => {
+  const { pickupId,
+    filterType = "today",
+    startDate,
+    endDate
+  } = req.query;
+  try {
+    const pickupObjectId = new mongoose.Types.ObjectId(pickupId);
+
+    // 🗓️ Global filter
+    let start, end;
+    switch (filterType) {
+      case "today":
+        start = moment().startOf("day").toDate();
+        end = moment().endOf("day").toDate();
+        break;
+      case "week":
+        start = moment().subtract(7, "days").toDate();
+        end = moment().toDate();
+        break;
+      case "month":
+        start = moment().startOf("month").toDate();
+        end = moment().endOf("month").toDate();
+        break;
+      case "range":
+        start = moment(startDate).toDate();
+        end = moment(endDate).toDate();
+        break;
+    }
+
+    const basePipeline = [
+      {
+        $lookup: {
+          from: "parcels_tbs",
+          localField: "parcel_id",
+          foreignField: "_id",
+          as: "parcel"
+        }
+      },
+      { $unwind: "$parcel" },
+      {
+        $match: {
+          deletedAt: null,
+          "parcel.deletedAt": null
+        }
+      }
+    ];
+
+    // =========================
+    // 📊 KPI COUNTS
+    // =========================
+    const kpiAgg = await ParcelJourneys.aggregate([
+      ...basePipeline,
+      {
+        $facet: {
+          dropped: [
+            {
+              $match: {
+                DroppedAt: { $gte: start, $lte: end },
+                "parcel.sentFrom": pickupObjectId
+              }
+            },
+            { $count: "count" }
+          ],
+          dispatched: [
+            {
+              $match: {
+                DispatchedAt: { $gte: start, $lte: end },
+                "parcel.sentFrom": pickupObjectId
+              }
+            },
+            { $count: "count" }
+          ],
+          arrived: [
+            {
+              $match: {
+                ArrivedAt: { $gte: start, $lte: end },
+                "parcel.pickup": pickupObjectId
+              }
+            },
+            { $count: "count" }
+          ],
+          collected: [
+            {
+              $match: {
+                CollectedAt: { $gte: start, $lte: end },
+                "parcel.pickup": pickupObjectId
+              }
+            },
+            { $count: "count" }
+          ]
+        }
+      }
+    ]);
+
+    const kpis = [
+      { label: "Dropped", value: kpiAgg[0].dropped[0]?.count || 0 },
+      { label: "Dispatched", value: kpiAgg[0].dispatched[0]?.count || 0 },
+      { label: "Arrived", value: kpiAgg[0].arrived[0]?.count || 0 },
+      { label: "Collected", value: kpiAgg[0].collected[0]?.count || 0 }
+    ];
+
+    // =========================
+    // 📈 HOURLY CHARTS (Collected example)
+    // =========================
+    const hourlyCollected = await ParcelJourneys.aggregate([
+      ...basePipeline,
+      {
+        $match: {
+          CollectedAt: { $gte: start, $lte: end },
+          "parcel.pickup": pickupObjectId
+        }
+      },
+      {
+        $group: {
+          _id: { $hour: "$CollectedAt" },
+          value: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const hourlyData = hourlyCollected.map(h => ({
+      key: h?._id?.toString().padStart(2, "0"),
+      value: h.value
+    }));
+
+    // =========================
+    // 🚚 DRIVER PERFORMANCE
+    // =========================
+    const driverStats = await ParcelJourneys.aggregate([
+      ...basePipeline,
+      {
+        $match: {
+          CollectedAt: { $gte: start, $lte: end },
+          "parcel.pickup": pickupObjectId
+        }
+      },
+      {
+        $group: {
+          _id: "$handedOverBy", // driver
+          totalCollected: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: "user_tbs",
+          localField: "_id",
+          foreignField: "_id",
+          as: "driver"
+        }
+      },
+      { $unwind: "$driver" },
+      {
+        $project: {
+          name: "$driver.name",
+          totalCollected: 1
+        }
+      },
+      { $sort: { totalCollected: -1 } }
+    ]);
+    res.json({
+      kpis,
+      hourlyData,
+      driverStats
+    });
+    return;
+
+  } catch (err) {
+    console.error(err);
+    throw err;
   }
 };

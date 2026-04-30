@@ -99,11 +99,11 @@ export const getUsers = async (req: Request | any, res: Response) => {
         // 🔐 ROLE-BASED ACCESS
         if (req.user.role === "admin") {
             filter.pickup = req.user.pickup;
-            console.log("admin access - filtering by pickup:", req.user.pickup);
+          
         }
         else if (req.user.role === "superadmin") {
             filter.business = req.user.business;
-            console.log("superadmin access - filtering by business:", req.user.business);
+           
         }
         else if (req.user.role === "superUser") {
             // no restriction

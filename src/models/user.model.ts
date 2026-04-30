@@ -25,6 +25,7 @@ const UserSchema = new mongoose.Schema({
     enum: ["superUser", "superadmin", "admin", "storemanager", "dispatcher", "sales", "driver"],
     default: "storemanager"
   },
+  FCM_token: { type: String },
   activated: { type: Boolean, default: true },
   password: { type: String, required: true },
   updatedAt: { type: Date, default: new Date().toISOString() },
