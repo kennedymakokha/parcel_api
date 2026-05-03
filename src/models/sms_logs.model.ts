@@ -14,7 +14,7 @@ const SmsSchema = new Schema<ISms>({
     message_id: { type: String },
     status_desc: { type: String, required: true },
     timestamp: { type: Date, default: Date.now },
-    ref: { type: String, enum: ["account-activation", "password-reset"], default: "account-activation" },
+    ref: { type: String, enum: ["account-activation", "password-reset","parcel Delivery","fallback notification"], default: "account-activation" },
 });
 SmsSchema.index({ sender: 1, receiver: 1, timestamp: 1 });
 const Sms = mongoose.model<ISms>("sms_logs_tb", SmsSchema);

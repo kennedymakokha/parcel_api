@@ -22,8 +22,8 @@ const UserSchema = new mongoose.Schema({
 
   role: {
     type: String,
-    enum: ["superUser", "superadmin", "admin", "storemanager", "dispatcher", "sales", "driver"],
-    default: "storemanager"
+    enum: ["superuser", "superadmin", "admin", "attendant", "supersales", "driver"],
+    default:"attendant"
   },
   FCM_token: { type: String },
   activated: { type: Boolean, default: true },

@@ -168,7 +168,12 @@ export const CreatePickup = async (req: Request | any, res: Response): Promise<v
         // 2. Create User
         const user = new User(adminData);
         await user.save({ session });
-
+        const socketIo = getSocketIo();
+        if (socketIo) {
+            socketIo.emit("pickup_created", {
+                pickup
+            });
+        }
         // If we reach here, everything is successful
         await session.commitTransaction();
         res.status(201).json({ ok: true, message: "Pickup and Admin added successfully", newpickup: pickup });

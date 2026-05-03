@@ -18,8 +18,24 @@ import cors from 'cors';
 import path from "path";
 import './crons/monthlybilling'
 import './crons/hourlyBilling'
-const dev = process.env.NODE_ENV !== 'production';
+import admin from "firebase-admin";
 
+
+
+const dev = process.env.NODE_ENV !== 'production';
+const firebasePrivateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !firebasePrivateKey) {
+  throw new Error('Missing Firebase admin credentials in environment variables');
+}
+
+admin.initializeApp({
+  credential: admin.credential.cert({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    // Replace escaped newlines to ensure the key is parsed correctly
+    privateKey: firebasePrivateKey,
+  }),
+});
 const app = express();
 const httpServer = createServer(app);
 

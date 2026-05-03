@@ -19,7 +19,6 @@ import { UserhistoryModel } from "../models/userHistory.model";
 
 export const register = async (req: Request | any, res: Response) => {
     try {
-        console.log(req.user);
         const { name, email, password, phone_number } = req.body;
         if (!name || !phone_number) {
             res.status(400).json("All fields are required")
@@ -86,24 +85,22 @@ export const updatePassword = async (req: Request, res: Response) => {
 }
 export const getUsers = async (req: Request | any, res: Response) => {
     try {
-      
+
         const {
             page = 1,
             limit = 10,
             search = '',
+            pickup,
             role,
         } = req.query;
 
         let filter: any = {};
-
-        // 🔐 ROLE-BASED ACCESS
-        if (req.user.role === "admin") {
-            filter.pickup = req.user.pickup;
-          
+        if (pickup) {
+            filter.pickup = pickup
         }
+      
         else if (req.user.role === "superadmin") {
             filter.business = req.user.business;
-           
         }
         else if (req.user.role === "superUser") {
             // no restriction
@@ -134,7 +131,7 @@ export const getUsers = async (req: Request | any, res: Response) => {
             .skip((Number(page) - 1) * Number(limit))
             .limit(Number(limit))
             .sort({ createdAt: -1 });
-        console.log("users:", users);
+
         const total = await User.countDocuments(filter);
 
         res.status(200).json({
@@ -274,7 +271,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         const { phone_number, password } = req.body;
 
         // Format phone number
-        const phone = await Format_phone_number(phone_number);
+        const phone = phone_number;
 
         // Find user
         const userExists: any = await User.findOne({
@@ -282,30 +279,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
                 { phone_number: phone_number },
                 { phone_number: phone }
             ]
-        }).select("phone_number name role activated password business pickup");
+        }).select("phone_number name role activated password business pickup").populate("pickup").populate("business");
 
         if (!userExists) {
-            res.status(400).json("User Not Found");
+            res.status(400).json({ message: "User Not Found" });
+            return
         }
 
         // Check password
         const isMatch = await bcrypt.compare(password, userExists.password);
         if (!isMatch) {
-            res.status(401).json("Invalid credentials");
-        }
-
-        // 🔥 Conditional population
-        if (userExists.role === "superadmin") {
-            await userExists.populate({
-                path: "business"
-                // populate: {
-                //     path: "pickup"
-                // }
-            });
-        } else if (userExists.role === "admin") {
-            await userExists.populate("pickup");
-        } else {
-            await userExists.populate("business");
+            res.status(401).json({ message: "Invalid credentials" });
+            return
         }
 
         // Generate tokens
@@ -335,6 +320,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             user: userExists,
 
         });
+        return
 
     } catch (error: any) {
         console.log("Login Error:", error);

@@ -55,6 +55,7 @@ const ParcelSchema = new mongoose.Schema(
       type: Schema.Types.ObjectId,
       ref: 'pickup_tb'
     },
+    rerouted: { type: Boolean, default: false },
     sentFrom: {
       type: Schema.Types.ObjectId,
       ref: 'pickup_tb'
@@ -80,7 +81,7 @@ const ParcelSchema = new mongoose.Schema(
     deletedAt: { type: Date, default: null },
     updatedAt: { type: Date, default: null },
 
-  },
+  }, { timestamps: true }
 
 );
 
