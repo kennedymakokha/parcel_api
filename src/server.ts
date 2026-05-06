@@ -42,7 +42,7 @@ const httpServer = createServer(app);
 
 const allowedOrigins = [
   "http://localhost:3001/",
-  "http://192.168.100.156:3000/",
+  "https://parcel-mtaani.mtandao.co.ke",
   "http://localhost:3000",
   "https://marapesa.com",
   "https://smartshop-api.marapesa.com",
