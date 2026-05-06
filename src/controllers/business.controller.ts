@@ -13,27 +13,25 @@ import fs from "fs";
 import path from "path";
 import mongoose from "mongoose";
 import { PickuUpModel } from "../models/pickups.model";
+import { Parcels } from "../models/parcel.model";
+import { sendTopicNotification } from "../utils/notification";
 
 export const Create = async (req: Request | any, res: Response): Promise<void> => {
     // Start the session for the transaction
+
     const session = await mongoose.startSession();
     session.startTransaction();
 
-    const file = req.file;
-    if (!file) {
-        res.status(400).json({ message: "Kindly upload the logo" });
-        return;
-    }
 
     try {
-        const imageUrl = `${req.protocol}://${req.get("host")}/uploads/${file.filename}`;
-        req.body.logo = imageUrl;
+
 
         // Validation
         await CustomError(validateBusinessInput, req.body, res);
 
         let phone = await Format_phone_number(req.body.contact_number);
         req.body.contact_number = phone;
+
 
         // Check for existing business
         const Exists = await BusinessModel.findOne({ business_name: req.body.business_name }).session(session);
@@ -74,38 +72,31 @@ export const Create = async (req: Request | any, res: Response): Promise<void> =
             createdBy: user._id,
             state: "active",
             isHQ: true,
-            logo: imageUrl
+
         };
 
         const pickup = new PickuUpModel(pickupData);
         const savedPickup = await pickup.save({ session });
         // 4. Create Socket Room for Pickup
-        const roomName = `pickup_${savedPickup._id}`;
-
-        // optional: emit creation event (if needed elsewhere)
-        const socketIo = getSocketIo();
-        if (socketIo) {
-            socketIo.emit("room_created", {
-                room: roomName,
-                pickupId: savedPickup._id,
-            });
-        }
-
+       
+        await sendTopicNotification({
+            topic: `superuser`,
+            socket_topic_id: `superuser`,
+            event_name: "New  Business",
+            audience: `superusers`,
+            title: 'New  Business',
+            body: `Hello , ${req.user.name} Has Registered a new  Business ${req.body.business_name}  `
+        });
         // If we reach here, everything is successful
         await session.commitTransaction();
         res.status(201).json({ ok: true, message: "Business and Admin added successfully", newbusiness: business });
-
+        return
     } catch (error: any) {
         // ROLLBACK the database changes
         await session.abortTransaction();
 
         // CLEANUP: Delete the uploaded file since the DB record failed
-        if (file?.filename) {
-            const filePath = path.join(__dirname, "../../public/uploads", file.filename);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
-        }
+
         if (error.message === "BUSINESS_EXISTS") {
             res.status(400).json("Business already exists");
         } else {
@@ -198,18 +189,26 @@ export const Get = async (req: Request | any, res: Response | any) => {
 
     try {
         let options: any = { deletedAt: null, }
+
         if (req.user.role === "superadmin") {
             options = { deletedAt: null, createdBy: req.user.userId }
         }
+        if (req.user.role === "supersales") {
+            options = { deletedAt: null, createdBy: req.user.userId }
+        }
+        console.log(options);
         const { page = 1, limit = 10, } = req.query;
-        const products: any = await BusinessModel.find({ deletedAt: null, }).skip((page - 1) * limit)
+        const businesses: any = await BusinessModel.find(options).skip((page - 1) * limit)
             .limit(parseInt(limit))
             .sort({ createdAt: -1 })
         const total = await BusinessModel.countDocuments();
+        const active = await BusinessModel.countDocuments({ state: "active" });
+        const inactive = await BusinessModel.countDocuments({ state: "inactive" });
         res.status(201).json(
             {
-                products, page: parseInt(page),
-                totalPages: Math.ceil(total / limit)
+                businesses, page: parseInt(page),
+                totalPages: Math.ceil(total / limit),
+                active, inactive
             }
         );
         return;
@@ -243,6 +242,29 @@ export const GetPickups = async (req: Request | any, res: Response | any) => {
     }
 };
 
+export const GetPickupsForClient = async (req: Request | any, res: Response | any) => {
+
+    try {
+        const { page = 1, limit = 10, pickup } = req.query;
+        const pickupObj: any = await PickuUpModel.findById(pickup).select('business')
+        const pickups: any = await PickuUpModel.find({ deletedAt: null, business: pickupObj.business }).skip((page - 1) * limit)
+            .limit(parseInt(limit))
+            .sort({ createdAt: -1 })
+        const total = await PickuUpModel.countDocuments();
+        res.status(201).json(
+            {
+                pickups, page: parseInt(page),
+                totalPages: Math.ceil(total / limit)
+            }
+        );
+        return;
+    } catch (error) {
+        console.log(error)
+        res.status(500).json({ ok: false, message: "Server error", error });
+        return;
+
+    }
+};
 
 
 
@@ -301,22 +323,69 @@ export const Trash = async (req: Request | any, res: Response | any) => {
     }
 };
 
-export const Lock = async (req: Request | any, res: Response | any) => {
-    const { deviceId, event, payload } = req.body;
+export const getBusinessPickups = async (req: Request, res: Response): Promise<void> => {
     try {
-        emitToDevice("69b2e33b7df417e9466180e1", "business:update", {
-            primary_color: "#ff0000",
-            secondary_color: "#00ff00",
-            grayscale: true,
-        });
-        return
-    } catch (error) {
-        res.status(404).json(error);
+        const businessId = req.params.id;
 
-        return
-        throw new Error("deletion Failed ")
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+
+        let pickupFilter: any = { state: "active" };
+
+        if (mongoose.Types.ObjectId.isValid(businessId)) {
+            pickupFilter.business = businessId;
+        }
+
+        // ✅ 1. Get pickups
+        const pickups: any = await PickuUpModel.find(pickupFilter)
+            .select("_id pickup_name")
+            .populate("business", "business_name");
+
+        const pickupIds = pickups.map((p: any) => p._id);
+
+        // ✅ 2. Aggregate parcel counts (ONE query)
+        const parcelCounts = await Parcels.aggregate([
+            {
+                $match: {
+                    sentFrom: { $in: pickupIds },
+                    createdAt: { $gte: start, $lte: end },
+                },
+            },
+            {
+                $group: {
+                    _id: "$sentFrom",
+                    count: { $sum: 1 },
+                },
+            },
+        ]);
+
+        // ✅ 3. Map counts to pickups
+        const countMap = new Map(
+            parcelCounts.map((p: any) => [p._id.toString(), p.count])
+        );
+
+        const results = pickups.map((pickup: any) => ({
+            pickupId: pickup._id,
+            pickupName: pickup.pickup_name,
+            business: pickup.business?.business_name || null,
+            parcelsToday: countMap.get(pickup._id.toString()) || 0,
+        }));
+
+        res.json({
+            businessId,
+            date: start,
+            pickups: results,
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: "Failed to fetch business pickups",
+        });
     }
 };
-
 
 

@@ -21,6 +21,10 @@ const ParcelSchema = new mongoose.Schema(
     sender_address: {
       type: String,
     },
+    charges: {
+      type: Number,
+      default: 500
+    },
     paid: {
       type: Boolean,
       default: false
@@ -50,7 +54,7 @@ const ParcelSchema = new mongoose.Schema(
     instructions: String,
     fragile: { type: Boolean, default: false },
     destination: { type: String, enum: ["pickup", "dropoff"], default: "pickup" },
-    status: { type: String, enum: ["Pending Dispatch", "In Transit", "Pending Collection", "Collected", "Returned"], default: "Pending Dispatch" },
+    status: { type: String, enum: ["Pending Dispatch", "In Transit", "Pending Collection", "Collected", "Returned", "Cancelled"], default: "Pending Dispatch" },
     pickup: {
       type: Schema.Types.ObjectId,
       ref: 'pickup_tb'

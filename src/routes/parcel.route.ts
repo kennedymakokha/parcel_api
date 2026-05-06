@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { collectParcel, dispatchParcels, getParcels, GetParcels, markParcelArrived, registerParcel, GetParcelJourney, getTruckParcelCount, getParcelStatusCount, getParcelEventStats, getFullDashboard } from "../controllers/parcel.controller";
+import { collectParcel, dispatchParcels, getParcels, GetParcels, markParcelArrived, registerParcel, GetParcelJourney, getTruckParcelCount, getParcelStatusCount, getFullDashboard } from "../controllers/parcel.controller";
 
 const router = Router();
 

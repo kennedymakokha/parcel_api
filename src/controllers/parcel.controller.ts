@@ -12,41 +12,8 @@ import { sendTextMessage } from "../utils/sms_sender.util";
 import admin from "firebase-admin";
 import { PickuUpModel } from "../models/pickups.model";
 import { sendTopicNotification } from "../utils/notification";
+import { getSocketIo } from "../config/socket";
 
-// const [formData, setFormData] = useState<ParcelFormState>({
-//     sender: { name: "", phone: "", address: "" },
-//     receiver: { name: "", phone: "", address: "" },
-//     parcel: { weight: "", instructions: "", destination: "pickup", pickup: "", price: "" },
-//   });
-
-
-// export const registerPercel = async (req: Request, res: Response) => {
-//     const session = await mongoose.startSession();
-//     session.startTransaction();
-//     const { sender, receiver, parcel } = req.body;
-//     const body = { sender_name: sender.name, sender_phone: sender.phone, sender_address: sender.address, receiver_name: receiver.name, receiver_phone: receiver.phone, receiver_address: receiver.address, weight: parcel.weight, instructions: parcel.instructions, fragile: parcel.fragile, destination: parcel.destination, pickup: parcel.pickup, price: parcel.price };
-//     try {
-
-//         let Senderphone = await Format_phone_number(body.sender_phone);
-//         let Receiverphone = await Format_phone_number(body.receiver_phone);
-
-
-
-
-//         req.body.phone_number = phone
-
-
-
-//         res.status(201).json({ ok: true, message: "User registered successfully", newUser });
-//         return;
-
-//     } catch (error) {
-//         console.log(error)
-//         res.status(500).json({ message: "Server error", error });
-//         return;
-
-//     }
-// };
 
 export const registerParcel = async (req: Request | any, res: Response): Promise<void> => {
   const session = await mongoose.startSession();
@@ -78,7 +45,7 @@ export const registerParcel = async (req: Request | any, res: Response): Promise
     };
 
     // 1. Create parcel
-    const newParcel = new Parcels(parcelData);
+    const newParcel: any = new Parcels(parcelData);
     const savedParcel = await newParcel.save({ session });
 
     // 2. Create journey
@@ -89,6 +56,9 @@ export const registerParcel = async (req: Request | any, res: Response): Promise
     });
 
     await journey.save({ session });
+    const pickupId = newParcel.sentFrom._id.toString();
+    const io = getSocketIo();
+    io.to(`pickup_${pickupId}`).emit("Parcel-change", newParcel);
 
     await session.commitTransaction();
 
@@ -186,6 +156,143 @@ export const GetParcels = async (req: Request | any, res: Response | any) => {
   }
 };
 
+export const GetClientParcels = async (req: Request | any, res: Response | any) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      sentFrom,
+      status,
+      search,
+      sentTo,
+      phone
+    } = req.query;
+    let phoneNo = await Format_phone_number(phone);
+    let filter: any = { deletedAt: null, sender_phone: phoneNo };
+
+    /** ✅ STATUS-BASED LOGIC */
+    if (status === "Pending Collection") {
+      // ONLY sentFrom matters
+      if (sentTo) {
+        filter.pickup = sentTo;
+      }
+    }
+    else if (status === "Pending Dispatch") {
+      // ONLY sentFrom matters
+      if (sentFrom) {
+        filter.sentFrom = sentFrom;
+      }
+    } else {
+      // Normal case: allow either sentFrom OR sentTo
+      if (sentFrom && sentTo) {
+        filter.$or = [
+          { sentFrom: sentFrom },
+          { pickup: sentTo },
+        ];
+      } else if (sentFrom) {
+        filter.sentFrom = sentFrom;
+      } else if (sentTo) {
+        filter.pickup = sentTo;
+      }
+    }
+
+    /** ✅ Filter by status */
+    if (status && status !== '') {
+      filter.status = status;
+    }
+
+    /** ✅ Search */
+    if (search && search !== '') {
+      filter.code = { $regex: search, $options: 'i' };
+    }
+
+    /** ✅ Query */
+    const parcels = await Parcels.find(filter).select('pickup sentFrom receiver_name receiver_phone updatedAt code status')
+      .populate("pickup", "pickup_name")
+      .populate("sentFrom", "pickup_name")
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .sort({ createdAt: -1 });
+
+    const total = await Parcels.countDocuments(filter);
+
+    res.status(200).json({
+      parcels,
+      page: Number(page),
+      totalPages: Math.ceil(total / Number(limit)),
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      ok: false,
+      message: "Server error",
+      error,
+    });
+  }
+};
+export const GetClientParcel = async (req: Request | any, res: Response | any) => {
+  try {
+    const { id } = req.params;
+    const parcel: any = await Parcels.findOne({ code: id }).select('pickup charges sentFrom receiver_name receiver_phone status updatedAt code')
+      .populate("pickup", "pickup_name")
+      .populate("sentFrom", "pickup_name")
+
+    const Journey = await ParcelJourneys.findOne({ parcel_id: parcel._id })
+      .populate("recievedBy", "name")
+      .populate("DispatchedBy", "name")
+      .populate("DispatchedTo", "name")
+      .populate("deliveredTo", "name")
+      .populate("handedOverBy", "name")
+
+    res.status(200).json({
+      parcel,
+      Journey
+
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      ok: false,
+      message: "Server error",
+      error,
+    });
+  }
+};
+export const CancelParcel = async (req: Request | any, res: Response | any) => {
+  try {
+
+
+    const { id, parcelCode, receiverPhone, originalDestination } = req.body;
+    let phoneNo = await Format_phone_number(receiverPhone);
+    const existing: any = await Parcels.findOne({ pickup: originalDestination, receiver_phone: phoneNo, code: parcelCode }).populate("sentFrom", "pickup_name");
+
+    if (!existing) {
+      res.status(404).json({ message: "Parcel not found" });
+      return
+    }
+
+    const updates = await Parcels.findOneAndUpdate(
+      { pickup: originalDestination, receiver_phone: phoneNo, code: parcelCode },
+      { status: "Cancelled" },
+      { new: true }
+    );
+
+    const pickupId = existing.sentFrom._id.toString();
+    await sendTopicNotification({
+      topic: `pickup_${pickupId}_attendants`,
+      socket_topic_id: `pickup_${pickupId}`,
+      event_name: "Parcel-change",
+      audience: `${existing.sentFrom.pickup_name}`,
+      title: 'Parcel Cancellation',
+      body: `Hello ${existing.sentFrom.pickup_name}, a parcel with code ${parcelCode}  destined  for  ${existing.pickup.pickup_name}  has  been Cancelled and should not be  dispatched .`
+    });
+    res.status(200).json("updates");
+
+  } catch (error) {
+    console.error(error);
+    res.status(400).json(error);
+  }
+};
 export const GetParcelJourney = async (req: Request | any, res: Response | any) => {
   try {
     const { id } = req.params;
@@ -391,25 +498,7 @@ export const getParcelStatusCount = async (req: Request | any, res: Response | a
 
   }
 };
-export const dropParcel = async (req: Request | any, res: Response): Promise<void> => {
-  try {
-    const { parcelId } = req.params;
 
-    await Parcels.findByIdAndUpdate(parcelId, {
-      status: "Pending Dispatch"
-    });
-
-    await ParcelJourneys.findOneAndUpdate(
-      { parcel_id: parcelId },
-      { DroppedAt: new Date() }
-    );
-
-    res.json({ ok: true, message: "Parcel dropped successfully" });
-
-  } catch (error: any) {
-    res.status(500).json({ message: "Error dropping parcel", error: error.message });
-  }
-};
 
 export const dispatchParcels = async (req: Request | any, res: Response): Promise<void> => {
   const session = await mongoose.startSession();
@@ -450,6 +539,15 @@ export const dispatchParcels = async (req: Request | any, res: Response): Promis
     }));
 
     await parcelDriverModel.insertMany(driverEntries, { session });
+    for (let index = 0; index < parcelIds.length; index++) {
+      const element = parcelIds[index];
+      const Parcel: any = await Parcels.findById(element)
+      const pickupId = Parcel.sentFrom._id.toString();
+      const io = getSocketIo();
+      io.to(`pickup_${pickupId}`).emit("Parcel-change", Parcel);
+
+
+    }
     await session.commitTransaction();
     session.endSession();
 
@@ -503,7 +601,7 @@ export const markParcelArrived = async (req: Request | any, res: Response): Prom
       return;
     }
     if (parcel?.status !== "In Transit") {
-      res.status(404).json({ message: "Not in transit" });
+      res.status(404).json({ message: "Parcel  Code Error Kindly  trace the  parcel in the Reports  " });
       return;
     }
     await Parcels.findOneAndUpdate({ code: id }, {
@@ -511,6 +609,11 @@ export const markParcelArrived = async (req: Request | any, res: Response): Prom
       currentDriver: null,
       currentTruck: null
     });
+    const pickupId = parcel.sentFrom._id.toString();
+    const pickup = parcel.pickup._id.toString();
+    const io = getSocketIo();
+    io.to(`pickup_${pickupId}`).emit("Parcel-change", parcel);
+    io.to(`pickup_${pickup}`).emit("Parcel-change", parcel);
     if (!parcel) {
       res.status(404).json({ message: "Parcel not found" });
       return;
@@ -585,135 +688,7 @@ export const collectParcel = async (req: Request | any, res: Response): Promise<
 };
 
 
-export const getParcelEventStats = async (req: Request | any, res: Response): Promise<void> => {
-  try {
-    const {
-      pickupId,
-      filterType = "today",
-      startDate,
-      endDate
-    }: any = req.query
 
-
-    // const pickupId = "64b8c9f1c9d898e4b1a2e5f"; // Replace with actual pickup ID
-    let start, end;
-
-    // 🌍 Global date filter
-    switch (filterType) {
-      case "today":
-        start = moment().startOf("day").toDate();
-        end = moment().endOf("day").toDate();
-        break;
-
-      case "week":
-        start = moment().subtract(7, "days").startOf("day").toDate();
-        end = moment().endOf("day").toDate();
-        break;
-
-      case "month":
-        start = moment().startOf("month").toDate();
-        end = moment().endOf("month").toDate();
-        break;
-
-      case "range":
-        start = moment(startDate).startOf("day").toDate();
-        end = moment(endDate).endOf("day").toDate();
-        break;
-
-      default:
-        throw new Error("Invalid filter");
-    }
-
-
-    const pickupObjectId = mongoose.Types.ObjectId.isValid(pickupId)
-      ? new mongoose.Types.ObjectId(pickupId)
-      : null;
-
-    if (!pickupObjectId) {
-      throw new Error("Invalid pickupId");
-    }
-    const result = await ParcelJourneys.aggregate([
-      {
-        $lookup: {
-          from: "parcels_tbs",
-          localField: "parcel_id",
-          foreignField: "_id",
-          as: "parcel"
-        }
-      },
-      { $unwind: "$parcel" },
-
-      {
-        $match: {
-          deletedAt: null,
-          "parcel.deletedAt": null
-        }
-      },
-
-      {
-        $facet: {
-          // 📦 ORIGIN (sentFrom)
-          dropped: [
-            {
-              $match: {
-                DroppedAt: { $gte: start, $lte: end },
-                "parcel.sentFrom": pickupObjectId
-              }
-            },
-            { $count: "count" }
-          ],
-
-          dispatched: [
-            {
-              $match: {
-                DispatchedAt: { $gte: start, $lte: end },
-                "parcel.sentFrom": pickupObjectId
-              }
-            },
-            { $count: "count" }
-          ],
-
-          // 📍 DESTINATION (pickup)
-          arrived: [
-            {
-              $match: {
-                ArrivedAt: { $gte: start, $lte: end },
-                "parcel.pickup": pickupObjectId
-              }
-            },
-            { $count: "count" }
-          ],
-
-          collected: [
-            {
-              $match: {
-                CollectedAt: { $gte: start, $lte: end },
-                "parcel.pickup": pickupObjectId
-              }
-            },
-            { $count: "count" }
-          ]
-        }
-      }
-    ]);
-
-    const data = result[0];
-
-    const kpis = [
-      { label: "Dropped", value: data.dropped[0]?.count || 0 },
-      { label: "Dispatched", value: data.dispatched[0]?.count || 0 },
-      { label: "Arrived", value: data.arrived[0]?.count || 0 },
-      { label: "Collected", value: data.collected[0]?.count || 0 },
-    ];
-
-    res.json({ data: kpis });
-    return
-
-  } catch (err) {
-    console.error(err);
-    throw err;
-  }
-};
 
 
 export const getFullDashboard = async (req: Request | any, res: Response): Promise<void> => {
@@ -793,8 +768,13 @@ export const getFullDashboard = async (req: Request | any, res: Response): Promi
     });
 
     const cancelled = await Parcels.countDocuments({
-      status: "Returned",
+      status: "Cancelled",
       sentFrom: pickupId,
+      updatedAt: { $gte: start, $lte: end },
+    });
+    const awaiting = await Parcels.countDocuments({
+      status: "Pending Collection",
+      pickup: pickupId,
       updatedAt: { $gte: start, $lte: end },
     });
 
@@ -863,6 +843,7 @@ export const getFullDashboard = async (req: Request | any, res: Response): Promi
             totalParcels,
             delivered,
             ontransit,
+            awaiting,
             pending,
             collected,
             cancelled,
@@ -894,109 +875,5 @@ export const getFullDashboard = async (req: Request | any, res: Response): Promi
   }
 };
 
-export const getBusinessDashboard = async (req: Request | any, res: Response): Promise<void> => {
-  const { filterType = "today", startDate, endDate } = req.query;
-  const user = req.user; // assume middleware attaches { role, business }
 
-  // Utility: compute date range
-  const getDateRange = () => {
-    const now = new Date();
-    let start: Date;
-    let end: Date = new Date();
-
-    switch (filterType) {
-      case "today":
-        start = new Date(now.setHours(0, 0, 0, 0));
-        break;
-      case "yesterday":
-        start = new Date();
-        start.setDate(start.getDate() - 1);
-        start.setHours(0, 0, 0, 0);
-        end = new Date();
-        end.setDate(end.getDate() - 1);
-        end.setHours(23, 59, 59, 999);
-        break;
-      case "week":
-        start = new Date();
-        start.setDate(start.getDate() - 7);
-        break;
-      case "month":
-        start = new Date();
-        start.setDate(start.getDate() - 30);
-        break;
-      case "year":
-        start = new Date(now.getFullYear(), 0, 1);
-        break;
-      case "custom":
-        start = startDate ? new Date(startDate) : new Date(0);
-        end = endDate ? new Date(endDate) : new Date();
-        break;
-      default:
-        start = new Date(0);
-    }
-
-    return { start, end };
-  };
-
-  try {
-    const { start, end } = getDateRange();
-
-    // Step 1: get all pickups under this business
-    const pickups = await PickuUpModel.find({ business: user.business, state: "active" });
-
-    // Step 2: compute KPIs for each pickup
-    const results = await Promise.all(
-      pickups.map(async (pickup) => {
-        const totalParcels = await Parcels.countDocuments({
-          sentFrom: pickup._id,
-          createdAt: { $gte: start, $lte: end },
-        });
-
-        const delivered = await Parcels.countDocuments({
-          status: "Collected",
-          sentFrom: pickup._id,
-          updatedAt: { $gte: start, $lte: end },
-        });
-
-        const pending = await Parcels.countDocuments({
-          status: "Pending Dispatch",
-          sentFrom: pickup._id,
-          createdAt: { $gte: start, $lte: end },
-        });
-
-        const collected = await Parcels.countDocuments({
-          status: "Collected",
-          sentFrom: pickup._id,
-          updatedAt: { $gte: start, $lte: end },
-        });
-
-        const cancelled = await Parcels.countDocuments({
-          status: "Returned",
-          sentFrom: pickup._id,
-          updatedAt: { $gte: start, $lte: end },
-        });
-
-        return {
-          pickupId: pickup._id,
-          pickupName: pickup.pickup_name,
-          totalParcels,
-          delivered,
-          pending,
-          collected,
-          cancelled,
-        };
-      })
-    );
-
-    res.json({
-      filterType,
-      start,
-      end,
-      pickups: results,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch business dashboard KPIs" });
-  }
-};
 

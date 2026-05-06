@@ -25,18 +25,29 @@ export const setupSocket = (socketInstance: any) => {
             console.log(`Device registered: ${deviceId}`);
             connectedDevices[deviceId] = socket.id;
         });
-        socket.on("join_pickup_room", ({ pickupId }: any) => {
-            if (!pickupId) return;
-
+        socket.on("join_pickup_room", ({ pickupId }:any) => {
             const roomName = `pickup_${pickupId}`;
             socket.join(roomName);
 
-            console.log(`Socket ${socket.id} joined pickup room: ${roomName}`);
+            console.log(`✅ ${socket.id} joined ${roomName}`);
 
-            socket.to(roomName).emit("user_joined", {
-                message: `User ${socket.id} joined pickup ${pickupId}`
+            // 👇 send confirmation
+            socket.emit("joined_pickup", {
+                room: roomName,
             });
         });
+        // socket.on("join_pickup_room", ({ pickupId }: any) => {
+        //     if (!pickupId) return;
+
+        //     const roomName = `pickup_${pickupId}`;
+        //     socket.join(roomName);
+
+        //     console.log(`Socket ${socket.id} joined pickup room: ${roomName}`);
+
+        //     socket.to(roomName).emit("user_joined", {
+        //         message: `User ${socket.id} joined pickup ${pickupId}`
+        //     });
+        // });
         socket.on('join_topic', (topic: any) => {
             socket.join(topic);
             console.log(`User ${socket.id} joined topic: ${topic}`);

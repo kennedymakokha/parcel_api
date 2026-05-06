@@ -12,6 +12,7 @@ import { jwtDecode } from "jwt-decode";
 import { MakeActivationCode } from "../utils/generate_activation.util";
 import { sendTextMessage } from "../utils/sms_sender.util";
 import { UserhistoryModel } from "../models/userHistory.model";
+import mongoose from 'mongoose';
 
 
 
@@ -65,14 +66,16 @@ export const register = async (req: Request | any, res: Response) => {
 
 export const updatePassword = async (req: Request, res: Response) => {
     try {
-        const { newPassword, phone_number } = req.body
+        const { password, phone_number, code } = req.body
         let phone = await Format_phone_number(phone_number);
-        const user: any = await User.findOne({ phone_number: phone });  // Find the user by ID
+        const user: any = await User.findOne({ phone_number: phone, activationCode: code });  // Find the user by ID
         if (!user) {
-            res.status(400).json("user not found");
+            res.status(400).json("The  code Youe entered  is  wrong  ");
             return
         }
-        user.password = newPassword
+
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(req.body.password, salt);
         await user.save();
         res.status(200).json({ success: true, message: "Password updated successfully" });
         return;
@@ -83,41 +86,48 @@ export const updatePassword = async (req: Request, res: Response) => {
 
     }
 }
+
 export const getUsers = async (req: Request | any, res: Response) => {
     try {
-
-        const {
+        let {
             page = 1,
             limit = 10,
             search = '',
             pickup,
             role,
         } = req.query;
+        console.log(req.query);
+        console.log(req.user.role);
+        const filter: any = {};
 
-        let filter: any = {};
-        if (pickup) {
-            filter.pickup = pickup
+        // ✅ CLEAN pickup (handle "undefined", "", null)
+        if (
+            pickup &&
+            pickup !== 'undefined' &&
+            pickup !== 'null' &&
+            mongoose.Types.ObjectId.isValid(pickup)
+        ) {
+            filter.pickup = pickup;
         }
-      
+
+        // ✅ ROLE-BASED FILTER
         else if (req.user.role === "superadmin") {
             filter.business = req.user.business;
         }
-        else if (req.user.role === "superUser") {
+        else if (req.user.role === "superuser") {
             // no restriction
         }
 
         // ❌ EXCLUDE LOGGED-IN USER
         filter._id = { $ne: req.user._id };
 
-        // 🎯 Filter by role (optional)
-        const cleanRole = role === 'undefined' ? undefined : role;
-
-        if (cleanRole) {
-            filter.role = cleanRole;
+        // ✅ CLEAN role
+        if (role && role !== 'undefined' && role !== 'null') {
+            filter.role = role;
         }
 
-        // 🔍 Search
-        if (search && search !== '') {
+        // ✅ SEARCH
+        if (search && search.trim() !== '') {
             filter.$or = [
                 { name: { $regex: search, $options: 'i' } },
                 { phone: { $regex: search, $options: 'i' } },
@@ -126,8 +136,8 @@ export const getUsers = async (req: Request | any, res: Response) => {
         }
 
         const users = await User.find(filter)
-            .populate("pickup", "pickup_name")
-            .populate("business", "name")
+            .populate('pickup', 'pickup_name')
+            .populate('business', 'name')
             .skip((Number(page) - 1) * Number(limit))
             .limit(Number(limit))
             .sort({ createdAt: -1 });
@@ -140,10 +150,9 @@ export const getUsers = async (req: Request | any, res: Response) => {
             totalPages: Math.ceil(total / Number(limit)),
             total,
         });
-
     } catch (error) {
-        console.log(error);
-        res.status(500).json({ message: "Server error", error });
+        console.log('GET USERS ERROR:', error);
+        res.status(500).json({ message: 'Server error', error });
     }
 };
 
@@ -185,19 +194,24 @@ export const requestToken = async (req: Request, res: Response) => {
         const user: any = await User.findOne({ phone_number: phone });  // Find the user by ID
         if (!user) {
             console.log("User Not Found")
-            res.status(400).json("user not found");
+            res.status(400).json({ message: "user not found" });
             return
         }
 
         let activationcode = MakeActivationCode(4)
         user.activationCode = activationcode
         await user.save();
-        await sendTextMessage(
-            `Hi ${user.name} \nWelcome to Marapesa\nYour your activation Code is ${activationcode}`,
+        let v = await sendTextMessage(
+            `Hi ${user.name}\nYour your Parcel Mtaani Code is ${activationcode}`,
             `${phone}`,
             user._id,
             "account-activation"
         )
+        if (v.success === false) {
+            res.status(400).json({ message: `Message Could  not be sent to ${req.body.phone_number}\nReason:${v.data.status_desc}` });
+            return;
+        }
+        console.log(v);
         res.status(200).json(`Token sent to ***********${phone.slice(-3)}`);
         return;
     } catch (error) {
@@ -263,11 +277,12 @@ export const verifyuser = async (req: Request, res: Response) => {
 }
 // User Login
 export const login = async (req: Request, res: Response): Promise<void> => {
+
     try {
         if (req.method !== "POST") {
             res.status(405).json("Method Not Allowed");
         }
-
+        console.log(req.body);
         const { phone_number, password } = req.body;
 
         // Format phone number

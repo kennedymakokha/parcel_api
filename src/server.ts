@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.routes';
 import parcelRoute from './routes/parcel.route';
 import businessRoute from './routes/business.routes';
 import TrucksRoute from './routes/trucks.route'
+import ClientRoute from './routes/client.route'
 import ClocksRoute from './routes/clocks.route'
 import { authenticateToken } from "./middleware/auth.middleware";
 import bodyParser from "body-parser";
@@ -41,6 +42,8 @@ const httpServer = createServer(app);
 
 const allowedOrigins = [
   "http://localhost:3001/",
+  "http://192.168.100.156:3000/",
+  "http://localhost:3000",
   "https://marapesa.com",
   "https://smartshop-api.marapesa.com",
   "http://185.113.249.137:3000",
@@ -72,6 +75,7 @@ app.use("/api/business", authenticateToken, businessRoute);
 app.use("/api/parcel", authenticateToken, parcelRoute);
 app.use("/api/clocks", authenticateToken, ClocksRoute);
 app.use("/api/trucks", authenticateToken, TrucksRoute);
+app.use("/api/clients", ClientRoute);
 app.use('*', (req, res) => {
   res.status(404).json({ message: 'API endpoint not found' });
 });

@@ -1,8 +1,12 @@
 import admin from "firebase-admin";
 import { NotificationModel } from "../models/notification.model";
 import { getSocketIo } from "../config/socket";
+
+
 export const sendTopicNotification = async ({ topic, title, body, audience, socket_topic_id, event_name }: any) => {
     try {
+        console.log("Sending to topic:", topic);
+
         const v = await admin.messaging().send({
             topic,
             notification: {
@@ -20,12 +24,16 @@ export const sendTopicNotification = async ({ topic, title, body, audience, sock
 
         // await notification.save();
         const io = getSocketIo();
+        console.log("Socket rooms:", io.sockets.adapter.rooms);
+        console.log("Emitting to:", socket_topic_id);
         io.to(socket_topic_id).emit(event_name, body);
         // pickup_${pickupId}
     } catch (error) {
         console.error('Error sending notification:', error);
     }
 };
+
+
 
 const sendPushNotification = async ({ token, title, body, data = {} }: any) => {
     try {

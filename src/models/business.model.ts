@@ -10,7 +10,7 @@ const businessScema = new mongoose.Schema({
   kra_pin: { type: String },
   latitude: Number,
   longitude: Number,
-  state: { type: String, enum: ["active", "inactive"], default: "inactive" },
+  state: { type: String, enum: ["active", "inactive"], default: "active" },
   created_at: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   api_key: { type: String, },
