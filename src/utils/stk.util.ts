@@ -1,7 +1,7 @@
 import fetch, { Headers } from "node-fetch";
 import axios from "axios";
 import moment from "moment";
-import  MpesaLogs from "../models/mpesaLogs.model";
+import MpesaLogs from "../models/mpesaLogs.model";
 import { Request, Response } from "express";
 
 
@@ -33,12 +33,13 @@ interface MpesaStkResponse {
 export const Mpesa_stk = async (
     No: string,
     amount: number,
-    user?: string
+    user?: string,
+    pickup: any
 ): Promise<MpesaStkResponse> => {
-    const consumer_key = process.env.MPESA_CONSUMER_KEY as string;
-    const consumer_secret = process.env.MPESA_CONSUMER_SECRETE as string;
-    const passkey = process.env.MPESA_CONSUMER_PASSKEY as string;
-    const short_code = parseInt(process.env.MPESA_SHORT_CODE as string, 10);
+    const consumer_key = pickup.consumerKey;
+    const consumer_secret = pickup.consumerSecrete;
+    const passkey = pickup.consumerPasskey;
+    const short_code = parseInt(pickup.shortcode);
     const timestamp = moment().format("YYYYMMDDHHmmss");
     const phone = validatePhone(No);
     const new_amount = parseInt(amount.toString(), 10);
@@ -90,7 +91,7 @@ export const Mpesa_stk = async (
     );
 
     const data: any = await fetch_response.json();
-    
+
     await new MpesaLogs({
         MerchantRequestID: data.MerchantRequestID,
         CheckoutRequestID: data.CheckoutRequestID,

@@ -10,6 +10,10 @@ const pickUpScema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   api_key: { type: String, },
+  consumerKey:{type:String,default:"5rwMTDdZH2eloHWi:w7ML5QvOJizN07A1WFpXAw==:AfXEkOPnb/V3wNGKDNQ5v7smIQFO3Iz/aH/kc8B0T4I="},
+  consumerSecret:{type:String,default:"Ta8BMF7er8qZfYGA:POA8zkqSqMRDreCohBa7SQ==:LugLCe2DsyQQedjG8QDn4g=="},
+  passKey:{type:String,default:"0xUDu8Vj9lGZTXmN:eomlBXC6DMc1rsbBVlO2cQ==:nzMA1yLIkpsK/qnaE4lItoO2SYbLNWKxr4QbXIcrbXH+87vc2IxoSv7VbBHg/ZvuyxWB+LmPG5wuZApjqwaWjQ=="},
+  shortCode:{type:String,default:"4115395"},
   primary_color: String,
   strictMpesa: { type: Boolean, default: false },
   isHQ: { type: Boolean, default: false },
@@ -20,7 +24,7 @@ const pickUpScema = new mongoose.Schema({
     type: Schema.Types.ObjectId,
     ref: 'user_tb'
   },
-   business: {
+  business: {
     type: Schema.Types.ObjectId,
     ref: 'business_tb'
   },
