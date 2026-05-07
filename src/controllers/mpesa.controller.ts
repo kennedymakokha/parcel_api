@@ -4,6 +4,7 @@ import Mpesa_stk from "../utils/stk.util";
 import { getSocketIo } from "../config/socket";
 import MpesaLogs from "../models/mpesaLogs.model";
 import { sendTopicNotification } from "../utils/notification";
+import { PickuUpModel } from "../models/pickups.model";
 
 
 
@@ -56,13 +57,13 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
 
         let io = await getSocketIo()
 
-        const { amount, phone_number, pickup } = req.body;
+        const { amount, phone_number, pickup_id } = req.body;
 
         // console.log(agent)
         // res.status(500).json({ message: "Payment not verified. Please try again later." });
         // return
-       
-        const pickupId = pickup._id.toString();
+        const pickup: any = await PickuUpModel.findById(pickup_id)
+        const pickupId = pickup_id.toString();
         const response = await Mpesa_stk(phone_number, Number(amount), req.user._id, pickup);
         const merchantRequestId = response.MerchantRequestID;
         let logs = await MpesaLogs.findOne({ MerchantRequestID: merchantRequestId });
