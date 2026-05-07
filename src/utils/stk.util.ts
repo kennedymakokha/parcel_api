@@ -77,7 +77,7 @@ export const Mpesa_stk = async (
                 TransactionType: "CustomerPayBillOnline",
                 Amount: new_amount,
                 PartyA: phone,
-                PartyB: pickup.shortcode,
+                PartyB: pickup.shortCode,
                 PhoneNumber: phone,
                 CallBackURL: `https://api.mtandao.co.ke/apicallback`,
                 AccountReference: "Mtadao Pack Ltd",
