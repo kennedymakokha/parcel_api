@@ -112,8 +112,25 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
             // sendFcmPush(`${agent?.fcmToken}`, `${logs.phone_number} Transaction Status!`, `${logs.ResultDesc}`);
             return
         } else {
-            console.log("LOGS", logs);
-            res.status(200).json({ message: "Deposit successful", data: logs });
+            const { MerchantRequestID,
+                CheckoutRequestID,
+                phone_number,
+                ResponseCode,
+                status,
+                amount,
+                MpesaReceiptNumber,
+                ResultDesc } = logs
+            res.status(200).json({
+                MerchantRequestID,
+                CheckoutRequestID,
+                phone_number,
+                ResponseCode,
+                status,
+                amount,
+                MpesaReceiptNumber,
+                ResultDesc,
+                message:ResultDesc, 
+            });
 
             let io = getSocketIo()
             io?.to(`${pickup._id}`).emit("payment-end", false)
