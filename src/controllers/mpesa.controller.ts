@@ -12,18 +12,11 @@ import { PickuUpModel } from "../models/pickups.model";
 export const mpesa_callback = async (req: Request | any, res: Response | any) => {
     try {
 
-        console.log("**********************************************************************");
-        console.log("Logs");
-        console.log("**********************************************************************");
-
         let io = await getSocketIo()
         const Logs = await MpesaLogs.find({
             MerchantRequestID: req.body.Body?.stkCallback?.MerchantRequestID
         })
-        console.log("**********************************************************************");
-        console.log(Logs);
-        console.log("**********************************************************************");
-
+   
         let updated
         for (let i = 0; i < Logs.length; i++) {
 
@@ -95,7 +88,7 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
                 event_name: "Payment Failure",
                 audience: `${pickup.pickup_name}`,
                 title: 'Payment Failure',
-                body: `Hello ${pickup.pickup_name}\nThe payment made by ${phone_number} was  not successfull Kindly reach out to ${req.user.name} and  confirm this  payment.`
+                body: `Hello ${pickup.pickup_name}\nThe payment made by ${phone_number} was  not successfull(${logs.message})\nKindly reach out to ${req.user.name} and  confirm this  payment.`
             });
 
             res.status(500).json({ message: "Payment not verified. Please try again later." });

@@ -90,7 +90,7 @@ export const Mpesa_stk = async (
 
     const data: any = await fetch_response.json();
 
-    let v = await new MpesaLogs({
+    await new MpesaLogs({
         MerchantRequestID: data.MerchantRequestID,
         CheckoutRequestID: data.CheckoutRequestID,
         phone_number: phone,
@@ -99,7 +99,7 @@ export const Mpesa_stk = async (
         user: user,
         log: "",
     }).save()
-    console.log("STK RESPONSE:", v);
+
     return {
         MerchantRequestID: data.MerchantRequestID,
         CheckoutRequestID: data.CheckoutRequestID,
