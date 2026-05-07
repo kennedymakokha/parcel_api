@@ -44,8 +44,6 @@ export const Mpesa_stk = async (
     const phone = validatePhone(No);
     const new_amount = parseInt(amount.toString(), 10);
 
-    console.log("KEY:", consumer_key);
-    console.log("SECRET:", consumer_secret);
     const response = await axios.get<{ access_token: string }>(
         `https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials`,
         {
@@ -89,7 +87,7 @@ export const Mpesa_stk = async (
     );
 
     const data: any = await fetch_response.json();
-
+    console.log("STK RESPONSE:", data);
     await new MpesaLogs({
         MerchantRequestID: data.MerchantRequestID,
         CheckoutRequestID: data.CheckoutRequestID,
