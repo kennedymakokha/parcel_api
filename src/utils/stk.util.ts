@@ -36,9 +36,9 @@ export const Mpesa_stk = async (
     user?: string,
     pickup?: any
 ): Promise<MpesaStkResponse> => {
-    const consumer_key = pickup.consumerKey;
-    const consumer_secret = pickup.consumerSecret;
-    const passkey = pickup.consumerPasskey;
+    const consumer_key = pickup.consumerKey.toString();
+    const consumer_secret = pickup.consumerSecret.toString();
+    const passkey = pickup.passKey.toString();
     const short_code = parseInt(pickup.shortcode);
     const timestamp = moment().format("YYYYMMDDHHmmss");
     const phone = validatePhone(No);
