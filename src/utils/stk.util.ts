@@ -39,7 +39,8 @@ export const Mpesa_stk = async (
     const consumer_key = pickup.consumerKey;
     const consumer_secret = pickup.consumerSecret;
     const passkey = pickup.passKey;
-    const short_code = pickup.shortcode.toString().trim();
+    const short_code = pickup.shortCode.toString().trim();
+ 
     const timestamp = moment().format("YYYYMMDDHHmmss");
     const phone = validatePhone(No);
     const new_amount = parseInt(amount.toString(), 10);
