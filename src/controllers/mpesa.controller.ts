@@ -15,6 +15,10 @@ export const mpesa_callback = async (req: Request | any, res: Response | any) =>
         const Logs = await MpesaLogs.find({
             MerchantRequestID: req.body.Body?.stkCallback?.MerchantRequestID
         })
+        console.log("**********************************************************************");
+        console.log(Logs);
+        console.log("**********************************************************************");
+
         let updated
         for (let i = 0; i < Logs.length; i++) {
 

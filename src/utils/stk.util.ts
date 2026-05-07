@@ -3,6 +3,7 @@ import axios from "axios";
 import moment from "moment";
 import MpesaLogs from "../models/mpesaLogs.model";
 import { Request, Response } from "express";
+import { v4 } from "uuid";
 
 
 const validatePhone = (phone: string): string => {
@@ -40,7 +41,7 @@ export const Mpesa_stk = async (
     const consumer_secret = pickup.consumerSecret;
     const passkey = pickup.passKey;
     const short_code = pickup.shortCode.toString().trim();
- 
+
     const timestamp = moment().format("YYYYMMDDHHmmss");
     const phone = validatePhone(No);
     const new_amount = parseInt(amount.toString(), 10);
@@ -88,8 +89,8 @@ export const Mpesa_stk = async (
     );
 
     const data: any = await fetch_response.json();
-    console.log("STK RESPONSE:", data);
-    await new MpesaLogs({
+
+    let v = await new MpesaLogs({
         MerchantRequestID: data.MerchantRequestID,
         CheckoutRequestID: data.CheckoutRequestID,
         phone_number: phone,
@@ -98,6 +99,7 @@ export const Mpesa_stk = async (
         user: user,
         log: "",
     }).save()
+    console.log("STK RESPONSE:", v);
     return {
         MerchantRequestID: data.MerchantRequestID,
         CheckoutRequestID: data.CheckoutRequestID,
