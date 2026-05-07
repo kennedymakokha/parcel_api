@@ -61,16 +61,9 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
         // console.log(agent)
         // res.status(500).json({ message: "Payment not verified. Please try again later." });
         // return
-        let number
-        if (phone_number) {
-            number = phone_number
-        }
-        else {
-            const userObj: any = await User.findById(req.user.userId)
-            number = userObj?.phone_number
-        }
+       
         const pickupId = pickup._id.toString();
-        const response = await Mpesa_stk(number, Number(amount), userObj._id, pickup);
+        const response = await Mpesa_stk(phone_number, Number(amount), req.user._id, pickup);
         const merchantRequestId = response.MerchantRequestID;
         let logs = await MpesaLogs.findOne({ MerchantRequestID: merchantRequestId });
         io?.to(`${pickup._id}`).emit("payment-start", true)
