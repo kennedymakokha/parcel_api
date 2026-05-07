@@ -84,7 +84,7 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
                 socket_topic_id: `pickup_${pickupId}`,
                 event_name: "Payment Failure",
                 audience: `${pickup.pickup_name}`,
-                title: 'Wrong Destination',
+                title: 'Payment Failure',
                 body: `Hello ${pickup.pickup_name}\nThe payment made by ${phone_number} was  not successfull Kindly reach out to ${req.user.name} and  confirm this  payment.`
             });
 
