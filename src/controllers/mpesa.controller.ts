@@ -82,7 +82,7 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
             await sendTopicNotification({
                 topic: `pickup_${pickupId}_attendants`,
                 socket_topic_id: `pickup_${pickupId}`,
-                event_name: "Wrong Destination Parcel Rerouting",
+                event_name: "Payment Failure",
                 audience: `${pickup.pickup_name}`,
                 title: 'Wrong Destination',
                 body: `Hello ${pickup.pickup_name}\nThe payment made by ${phone_number} was  not successfull Kindly reach out to ${req.user.name} and  confirm this  payment.`

@@ -49,7 +49,7 @@ export const Mpesa_stk = async (
     ).toString("base64")}`;
 
     const response = await axios.get<{ access_token: string }>(
-        `${process.env.MPESA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
+        `https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials`,
         {
             headers: {
                 Authorization: `Basic ${Buffer.from(
@@ -67,7 +67,7 @@ export const Mpesa_stk = async (
     headers.append("Authorization", `Bearer ${token}`);
 
     const fetch_response = await fetch(
-        `${process.env.MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest`,
+        `https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest`,
         {
             method: "POST",
             headers,
@@ -80,9 +80,9 @@ export const Mpesa_stk = async (
                 TransactionType: "CustomerPayBillOnline",
                 Amount: new_amount,
                 PartyA: phone,
-                PartyB: process.env.MPESA_SHORT_CODE,
+                PartyB: pickup.shortcode,
                 PhoneNumber: phone,
-                CallBackURL: process.env.MPESA_CALLbACK,
+                CallBackURL: `https://api.mtandao.co.ke/apicallback`,
                 AccountReference: "Mtadao Pack Ltd",
                 TransactionDesc: "Payment delivery of *",
 
@@ -120,7 +120,7 @@ const getAccessToken = async (): Promise<string> => {
     ).toString("base64");
 
     const response = await axios.get(
-        `${process.env.MPESA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
+        `https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials`,
         {
             headers: {
                 Authorization: `Basic ${auth}`,
@@ -148,7 +148,7 @@ export const sendB2C = async (req: Request | any, res: Response | any) => {
         };
 
         const response = await axios.post(
-            `${process.env.MPESA_BASE_URL}/mpesa/b2c/v1/paymentrequest`,
+            `https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest`,
             payload,
             {
                 headers: {
@@ -214,7 +214,7 @@ export const sendB2C = async (req: Request | any, res: Response | any) => {
 //     ).toString("base64")}`;
 
 //     const response = await axios.get<{ access_token: string }>(
-//         `${process.env.MPESA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
+//         `https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials`,
 //         {
 //             headers: {
 //                 Authorization: `Basic ${Buffer.from(
@@ -232,7 +232,7 @@ export const sendB2C = async (req: Request | any, res: Response | any) => {
 //     headers.append("Authorization", `Bearer ${token}`);
 
 //     const fetch_response = await fetch(
-//         `${process.env.MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest`,
+//         `https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest`,
 //         {
 //             method: "POST",
 //             headers,
