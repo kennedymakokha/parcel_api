@@ -36,18 +36,16 @@ export const Mpesa_stk = async (
     user?: string,
     pickup?: any
 ): Promise<MpesaStkResponse> => {
-    const consumer_key = pickup.consumerKey.toString();
-    const consumer_secret = pickup.consumerSecret.toString();
-    const passkey = pickup.passKey.toString();
+    const consumer_key = pickup.consumerKey;
+    const consumer_secret = pickup.consumerSecret;
+    const passkey = pickup.passKey;
     const short_code = parseInt(pickup.shortcode);
     const timestamp = moment().format("YYYYMMDDHHmmss");
     const phone = validatePhone(No);
     const new_amount = parseInt(amount.toString(), 10);
 
-    const Authorization = `Bearer ${Buffer.from(
-        `${consumer_key}:${consumer_secret}`
-    ).toString("base64")}`;
-
+    console.log("KEY:", consumer_key);
+    console.log("SECRET:", consumer_secret);
     const response = await axios.get<{ access_token: string }>(
         `https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials`,
         {
