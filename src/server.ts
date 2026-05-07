@@ -77,7 +77,7 @@ app.use("/api/business", authenticateToken, businessRoute);
 app.use("/api/parcel", authenticateToken, parcelRoute);
 app.use("/api/clocks", authenticateToken, ClocksRoute);
 app.use("/api/trucks", authenticateToken, TrucksRoute);
-app.use("/api/payments", authenticateToken, PaymentRoute);
+app.use("/api/payments", PaymentRoute);
 app.use("/api/clients", ClientRoute);
 app.use('*', (req, res) => {
   res.status(404).json({ message: 'API endpoint not found' });
