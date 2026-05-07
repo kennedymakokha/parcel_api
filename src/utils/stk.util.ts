@@ -34,7 +34,7 @@ export const Mpesa_stk = async (
     No: string,
     amount: number,
     user?: string,
-    pickup: any
+    pickup?: any
 ): Promise<MpesaStkResponse> => {
     const consumer_key = pickup.consumerKey;
     const consumer_secret = pickup.consumerSecrete;
