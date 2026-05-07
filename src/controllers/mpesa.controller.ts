@@ -16,7 +16,7 @@ export const mpesa_callback = async (req: Request | any, res: Response | any) =>
         const Logs = await MpesaLogs.find({
             MerchantRequestID: req.body.Body?.stkCallback?.MerchantRequestID
         })
-   
+
         let updated
         for (let i = 0; i < Logs.length; i++) {
 
@@ -99,12 +99,22 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
 
         if (logs.ResponseCode !== 0) {
             res.status(400).json({ message: logs.ResultDesc });
+            await sendTopicNotification({
+                topic: `pickup_${pickupId}_attendants`,
+                socket_topic_id: `pickup_${pickupId}`,
+                event_name: "Payment Failure",
+                audience: `${pickup.pickup_name}`,
+                title: 'Payment Failure',
+                body: `Hello ${pickup.pickup_name}\nThe payment made by ${phone_number} was  not successfull(${logs.ResultDesc})\nKindly reach out to ${req.user.name} and  confirm this  payment.`
+            });
+
             io?.to(`${pickup._id}`).emit("payment-end", false)
             // sendFcmPush(`${agent?.fcmToken}`, `${logs.phone_number} Transaction Status!`, `${logs.ResultDesc}`);
             return
         } else {
 
-            res.status(200).json({ message: "Deposit successful" });
+            res.status(200).json({ message: "Deposit successful", data: logs });
+
             let io = getSocketIo()
             io?.to(`${pickup._id}`).emit("payment-end", false)
             return
@@ -112,11 +122,12 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
 
     } catch (error: any) {
         console.error("Wallet operation error:", error);
-        return res.status(400).json({
+        res.status(400).json({
             success: false,
             message: "Operation failed",
             error: error?.message || error
         });
+        return
     }
 };
 
