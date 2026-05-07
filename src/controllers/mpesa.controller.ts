@@ -11,6 +11,11 @@ import { PickuUpModel } from "../models/pickups.model";
 
 export const mpesa_callback = async (req: Request | any, res: Response | any) => {
     try {
+
+        console.log("**********************************************************************");
+        console.log("Logs");
+        console.log("**********************************************************************");
+
         let io = await getSocketIo()
         const Logs = await MpesaLogs.find({
             MerchantRequestID: req.body.Body?.stkCallback?.MerchantRequestID
@@ -30,22 +35,23 @@ export const mpesa_callback = async (req: Request | any, res: Response | any) =>
                 ResponseCode: req.body.Body?.stkCallback?.ResultCode,
                 MpesaReceiptNumber: req.body.Body?.stkCallback?.CallbackMetadata?.Item[1]?.Value
             }, { new: true, useFindAndModify: false })
-            const vendor: any = await User.findOne({ _id: updated.vendor })
-            const user: any = await User.findOne({ _id: updated.user })
+            return
+            // const vendor: any = await User.findOne({ _id: updated.vendor })
+            // const user: any = await User.findOne({ _id: updated.user })
 
-            if (req.body.Body?.stkCallback?.ResultCode === 0) {
-                let current = user?.amount | 0
-                let newAmount = current + updated?.amount
-                let currentvendor = vendor?.amount | 0
-                let newAmountvendor = currentvendor + updated.amount
-                let userPoints: any = user?.points | 0
-                let newpoints = userPoints + 0.01 * parseFloat(updated.amount)
-                await User.findOneAndUpdate({ _id: updated.vendor, role: "admin" }, { amount: newAmountvendor }, { new: true, useFindAndModify: false })
-                await User.findOneAndUpdate({ _id: updated.user, role: "client" }, { amount: newAmount, points: newpoints }, { new: true, useFindAndModify: false })
-                // sendFcmPush(`${vendor?.fcmToken}`, `${updated.phone_number} Transaction Success!`, `${updated.ResultDesc}`);
-                io?.to(`${vendor._id}`).emit("payment-updated", newAmount)
-                return
-            }
+            // if (req.body.Body?.stkCallback?.ResultCode === 0) {
+            //     let current = user?.amount | 0
+            //     let newAmount = current + updated?.amount
+            //     let currentvendor = vendor?.amount | 0
+            //     let newAmountvendor = currentvendor + updated.amount
+            //     let userPoints: any = user?.points | 0
+            //     let newpoints = userPoints + 0.01 * parseFloat(updated.amount)
+            //     await User.findOneAndUpdate({ _id: updated.vendor, role: "admin" }, { amount: newAmountvendor }, { new: true, useFindAndModify: false })
+            //     await User.findOneAndUpdate({ _id: updated.user, role: "client" }, { amount: newAmount, points: newpoints }, { new: true, useFindAndModify: false })
+            //     // sendFcmPush(`${vendor?.fcmToken}`, `${updated.phone_number} Transaction Success!`, `${updated.ResultDesc}`);
+            //     io?.to(`${vendor._id}`).emit("payment-updated", newAmount)
+            //     return
+            // }
 
         }
     } catch (error) {
