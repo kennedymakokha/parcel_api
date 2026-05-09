@@ -1,6 +1,8 @@
 import cron from "node-cron";
 import { PickuUpModel } from "../models/pickups.model";
 import { sendTopicNotification } from "../utils/notification";
+import { Parcels } from "../models/parcel.model";
+import mongoose from "mongoose";
 
 export const startPickupPaidResetCron = () => {
     cron.schedule("* * * * *", async () => {
@@ -14,9 +16,9 @@ export const startPickupPaidResetCron = () => {
                 }).format(new Date())
             );
             const now = new Date();
-          
+
             const currentMinute = now.getMinutes();
-           
+
 
 
             const pickups = await PickuUpModel.find({
@@ -35,7 +37,7 @@ export const startPickupPaidResetCron = () => {
                     .map(Number);
 
                 const triggerHour = endHour - 1;
-                if (currentHour === triggerHour && currentMinute === 45) {
+                if (currentHour === triggerHour && currentMinute === 59) {
                     pickup.paid = false;
 
                     await pickup.save();
@@ -51,6 +53,24 @@ export const startPickupPaidResetCron = () => {
                         body: `Hello ${pickup.pickup_name},\nToday's shift has now ended.\nThank you for your support today.\nAny pending matters have been forwarded to tomorrow.`,
                     });
 
+                    const nairobiNow = new Date(
+                        now.toLocaleString("en-US", { timeZone: "Africa/Nairobi" })
+                    );
+
+                    const start = new Date(nairobiNow);
+                    start.setHours(0, 0, 0, 0);
+
+                    const end = new Date(nairobiNow);
+                    end.setHours(23, 59, 59, 999);
+
+                    const count = await Parcels.countDocuments({
+                        sentFrom: new mongoose.Types.ObjectId(pickupId),
+                        createdAt: {
+                            $gte: start,
+                            $lte: end,
+                        },
+                    });
+                    console.log(count);
                     console.log(`Updated paid=false for ${pickup.pickup_name}`);
                 }
 

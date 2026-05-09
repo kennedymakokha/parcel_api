@@ -96,7 +96,7 @@ export const getUsers = async (req: Request | any, res: Response) => {
             pickup,
             role,
         } = req.query;
-  
+
         const filter: any = {};
 
         // ✅ CLEAN pickup (handle "undefined", "", null)
@@ -210,7 +210,7 @@ export const requestToken = async (req: Request, res: Response) => {
             res.status(400).json({ message: `Message Could  not be sent to ${req.body.phone_number}\nReason:${v.data.status_desc}` });
             return;
         }
-       
+
         res.status(200).json(`Token sent to ***********${phone.slice(-3)}`);
         return;
     } catch (error) {
@@ -281,7 +281,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         if (req.method !== "POST") {
             res.status(405).json("Method Not Allowed");
         }
-       
+
         const { phone_number, password } = req.body;
 
         // Format phone number
@@ -299,7 +299,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             res.status(400).json({ message: "User Not Found" });
             return
         }
-
+        await User.updateOne(
+            { _id: userExists._id },
+            { $set: { FCM_token: req.body.FCM_token } }
+        );
         // Check password
         const isMatch = await bcrypt.compare(password, userExists.password);
         if (!isMatch) {
@@ -322,7 +325,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
                 maxAge: 3600,
             })
         );
-
+        
         // Remove password before sending response
         userExists.password = undefined;
 
