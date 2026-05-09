@@ -10,10 +10,10 @@ import { sendTopicNotification } from "../utils/notification";
 cron.schedule("* * * * *", async () => {
     try {
         const now = new Date();
-
+        console.log("NOW", now)
         const currentHour = now.getHours();
         const currentMinute = now.getMinutes();
-
+        console.log("NOW", currentMinute)
         // We only care about the last minute of the hour
         if (currentMinute !== 59) return;
 
@@ -26,7 +26,7 @@ cron.schedule("* * * * *", async () => {
 
         for (const pickup of pickups) {
             const workingHours = pickup.working_hrs; // e.g. "8-17"
-
+            console.log(pickup);
             if (!workingHours) continue;
 
             const [startHour, endHour] = workingHours
@@ -38,6 +38,7 @@ cron.schedule("* * * * *", async () => {
              * Example:
              * 8-17 => trigger at 16:59
              */
+            
             const triggerHour = endHour - 1;
 
             if (currentHour === triggerHour) {
