@@ -8,7 +8,7 @@ let io: any = null;
 let users: { [key: string]: string } = {};
 
 const connectedDevices: any = {};
-console.log(connectedDevices)
+
 export const setupSocket = (socketInstance: any) => {
     io = socketInstance;
     io.on("connection", (socket: any) => {

@@ -27,6 +27,7 @@ export const sendTopicNotification = async ({ topic, title, body, audience, sock
         
         io.to("socket_topic_id").emit(event_name, body);
         // pickup_${pickupId}
+        // console.log();
     } catch (error) {
         console.error('Error sending notification:', error);
     }
