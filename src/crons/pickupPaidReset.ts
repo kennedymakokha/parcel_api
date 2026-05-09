@@ -6,12 +6,17 @@ export const startPickupPaidResetCron = () => {
     cron.schedule("* * * * *", async () => {
         try {
 
-            console.log(Intl.DateTimeFormat().resolvedOptions().timeZone);
-            console.log(new Date().toString());
+            const currentHour = Number(
+                new Intl.DateTimeFormat('en-US', {
+                    hour: 'numeric',
+                    hour12: false,
+                    timeZone: 'Africa/Nairobi'
+                }).format(new Date())
+            );
             const now = new Date();
             // console.log(now);
             // const currentHour = now.getHours();
-            const currentHour = new Date().getUTCHours();
+            // const currentHour = new Date().getUTCHours();
             const currentMinute = now.getMinutes();
             // console.log(currentMinute);
 
