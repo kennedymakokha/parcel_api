@@ -20,6 +20,7 @@ import cors from 'cors';
 import path from "path";
 import './crons/monthlybilling'
 import './crons/hourlyBilling'
+import "./crons/pickupPaidReset.js";
 import admin from "firebase-admin";
 
 
