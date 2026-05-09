@@ -37,8 +37,8 @@ export const startPickupPaidResetCron = () => {
                     .map(Number);
 
                 const triggerHour = endHour - 1;
-                console.log(currentHour === triggerHour && currentMinute === 20, `${currentHour}:${currentMinute}`);
-                if (currentHour === triggerHour && currentMinute === 20) {
+                console.log(currentHour === triggerHour && currentMinute === 36, `${currentHour}:${currentMinute}`);
+                if (currentHour === triggerHour && currentMinute === 36) {
                     pickup.paid = false;
 
                     await pickup.save();
