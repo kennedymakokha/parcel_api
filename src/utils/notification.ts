@@ -24,8 +24,9 @@ export const sendTopicNotification = async ({ topic, title, body, audience, sock
 
         // await notification.save();
         const io = getSocketIo();
-        
-        io.to("socket_topic_id").emit(event_name, body);
+
+        io.to(socket_topic_id).emit(event_name, body);
+        console.log("top");
         // pickup_${pickupId}
         // console.log();
     } catch (error) {
