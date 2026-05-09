@@ -10,12 +10,12 @@ export const startPickupPaidResetCron = () => {
             const currentHour = now.getHours();
             const currentMinute = now.getMinutes();
             // console.log(currentMinute);
-            if (currentMinute !== 59) return;
+          
 
             const pickups = await PickuUpModel.find({
-                state: "active",
+                // state: "active",
                 deletedAt: null,
-                paid: true,
+                // paid: true,
             });
 
             for (const pickup of pickups) {
@@ -28,8 +28,8 @@ export const startPickupPaidResetCron = () => {
                     .map(Number);
 
                 const triggerHour = endHour - 1;
-
-                if (currentHour === triggerHour && currentMinute === 59) {
+                console.log(currentHour === triggerHour && currentMinute === 9, `${currentHour}:${currentMinute}`);
+                if (currentHour === triggerHour && currentMinute === 9) {
                     pickup.paid = false;
 
                     await pickup.save();

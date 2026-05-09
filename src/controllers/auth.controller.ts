@@ -96,8 +96,7 @@ export const getUsers = async (req: Request | any, res: Response) => {
             pickup,
             role,
         } = req.query;
-        console.log(req.query);
-        console.log(req.user.role);
+  
         const filter: any = {};
 
         // ✅ CLEAN pickup (handle "undefined", "", null)
@@ -211,7 +210,7 @@ export const requestToken = async (req: Request, res: Response) => {
             res.status(400).json({ message: `Message Could  not be sent to ${req.body.phone_number}\nReason:${v.data.status_desc}` });
             return;
         }
-        console.log(v);
+       
         res.status(200).json(`Token sent to ***********${phone.slice(-3)}`);
         return;
     } catch (error) {
@@ -282,7 +281,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         if (req.method !== "POST") {
             res.status(405).json("Method Not Allowed");
         }
-        console.log(req.body);
+       
         const { phone_number, password } = req.body;
 
         // Format phone number
