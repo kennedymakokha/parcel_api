@@ -7,7 +7,8 @@ export const startPickupPaidResetCron = () => {
         try {
             const now = new Date();
             // console.log(now);
-            const currentHour = now.getHours();
+            // const currentHour = now.getHours();
+            const currentHour = new Date().getUTCHours();
             const currentMinute = now.getMinutes();
             // console.log(currentMinute);
           
@@ -28,8 +29,8 @@ export const startPickupPaidResetCron = () => {
                     .map(Number);
 
                 const triggerHour = endHour - 1;
-                console.log(currentHour === triggerHour && currentMinute === 9, `${currentHour}:${currentMinute}`);
-                if (currentHour === triggerHour && currentMinute === 9) {
+                console.log(currentHour === triggerHour && currentMinute === 20, `${currentHour}:${currentMinute}`);
+                if (currentHour === triggerHour && currentMinute === 20) {
                     pickup.paid = false;
 
                     await pickup.save();
