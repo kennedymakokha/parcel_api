@@ -688,7 +688,27 @@ export const collectParcel = async (req: Request | any, res: Response): Promise<
 };
 
 
+export const GetParcelsCount = async (req: Request | any, res: Response | any) => {
+  try {
+    // console.log("object");
+    const { displayDate, pickupId } = req.query
+    const start = new Date(displayDate);
+    start.setHours(0, 0, 0, 0);
 
+    const end = new Date(displayDate);
+    end.setHours(23, 59, 59, 999);
+
+    const count = await Parcels.countDocuments({
+      sentFrom: new mongoose.Types.ObjectId(pickupId),
+      createdAt: {
+        $gte: start,
+        $lte: end,
+      },
+    });
+  } catch (error) {
+
+  }
+};
 
 
 export const getFullDashboard = async (req: Request | any, res: Response): Promise<void> => {
