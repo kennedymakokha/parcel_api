@@ -131,7 +131,6 @@ export const Get = async (req: Request | any, res: Response | any) => {
 
     try {
         const io = getSocketIo();
-        io.to("pickup_69fc3dd94483a2fb851d6b07").emit("pickup_shut", {});
         const { page = 1, limit = 10, } = req.query;
         const trucks: any = await Trucks.find({ business: req.user.business, deletedAt: null }).skip((page - 1) * limit)
             .limit(parseInt(limit))

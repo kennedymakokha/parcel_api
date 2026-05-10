@@ -13,6 +13,8 @@ import admin from "firebase-admin";
 import { PickuUpModel } from "../models/pickups.model";
 import { sendTopicNotification } from "../utils/notification";
 import { getSocketIo } from "../config/socket";
+import { validateParcelInput } from "../validations/parcel.validations";
+import { CustomError } from "../utils/custom_error.util";
 
 
 export const registerParcel = async (req: Request | any, res: Response): Promise<void> => {
@@ -43,7 +45,7 @@ export const registerParcel = async (req: Request | any, res: Response): Promise
       createdBy: req?.user.userId,
       business: req?.user.business
     };
-
+    await CustomError(validateParcelInput, parcelData, res);
     // 1. Create parcel
     const newParcel: any = new Parcels(parcelData);
     const savedParcel = await newParcel.save({ session });
