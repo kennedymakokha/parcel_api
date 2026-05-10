@@ -14,8 +14,7 @@ import { sendTextMessage } from "../utils/sms_sender.util";
 import { UserhistoryModel } from "../models/userHistory.model";
 import mongoose from 'mongoose';
 import { CustomError } from "../utils/custom_error.util";
-import { validateBusinessInput } from "../validations/business.validations";
-
+import { validateUserInput } from "../validations/user.validations";
 
 
 // User Registration
@@ -24,7 +23,7 @@ export const register = async (req: Request | any, res: Response) => {
     try {
         const { name, email, password, phone_number } = req.body;
 
-        await CustomError(validateBusinessInput, req.body, res);
+        await CustomError(validateUserInput, req.body, res);
         let phone = await Format_phone_number(phone_number); //format the phone number
         const userExists: any = await User.findOne(
             {
