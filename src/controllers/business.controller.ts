@@ -78,7 +78,7 @@ export const Create = async (req: Request | any, res: Response): Promise<void> =
         const pickup = new PickuUpModel(pickupData);
         const savedPickup = await pickup.save({ session });
         // 4. Create Socket Room for Pickup
-       
+
         await sendTopicNotification({
             topic: `superuser`,
             socket_topic_id: `superuser`,
@@ -216,6 +216,26 @@ export const Get = async (req: Request | any, res: Response | any) => {
         console.log(error)
         res.status(500).json({ ok: false, message: "Server error", error });
         return;
+
+    }
+};
+export const Subscribe = async (req: Request | any, res: Response | any) => {
+    try {
+        const pickup: any = await PickuUpModel.findById(req.body.pickup)
+        pickup.paid = true;
+        await pickup.save();
+        const pickupId = pickup._id.toString();
+
+        await sendTopicNotification({
+            topic: `pickup_${pickupId}_attendants`,
+            socket_topic_id: `pickup_${pickupId}`,
+            event_name: "pickup_open",
+            audience: `${pickup.pickup_name}`,
+            title: "Opening Down system",
+            body: `Hello ${pickup.pickup_name},\nLets Try Again Today\nHave a fruitful service Day.`,
+        });
+
+    } catch (error) {
 
     }
 };
