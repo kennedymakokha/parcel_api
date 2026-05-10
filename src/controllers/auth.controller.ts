@@ -37,7 +37,7 @@ export const register = async (req: Request | any, res: Response) => {
         );
 
         if (userExists) {
-            res.status(400).json("User already exists")
+            res.status(400).json({ message: "The phone or ID Number is already used i the system", })
             return
         }
         const salt = await bcrypt.genSalt(10);
@@ -168,10 +168,10 @@ export const Update: any = async (req: Request | any, res: Response | any) => {
 };
 export const getUser = async (req: Request | any, res: Response | any) => {
     try {
-        let user
+        let user: any
         if (req?.user?.userId) {
-            user = await User.findById(req.user.userId);
-            console.log(user)
+            user = await User.findById(req.user.userId).populate("pickup").populate("business");
+            delete user.password
             res.status(200).json(user);
         }
 
@@ -325,7 +325,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
                 maxAge: 3600,
             })
         );
-        
+
         // Remove password before sending response
         userExists.password = undefined;
 
