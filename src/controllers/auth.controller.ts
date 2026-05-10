@@ -13,6 +13,8 @@ import { MakeActivationCode } from "../utils/generate_activation.util";
 import { sendTextMessage } from "../utils/sms_sender.util";
 import { UserhistoryModel } from "../models/userHistory.model";
 import mongoose from 'mongoose';
+import { CustomError } from "../utils/custom_error.util";
+import { validateBusinessInput } from "../validations/business.validations";
 
 
 
@@ -21,10 +23,8 @@ import mongoose from 'mongoose';
 export const register = async (req: Request | any, res: Response) => {
     try {
         const { name, email, password, phone_number } = req.body;
-        if (!name || !phone_number) {
-            res.status(400).json("All fields are required")
-            return
-        }
+
+        await CustomError(validateBusinessInput, req.body, res);
         let phone = await Format_phone_number(phone_number); //format the phone number
         const userExists: any = await User.findOne(
             {
