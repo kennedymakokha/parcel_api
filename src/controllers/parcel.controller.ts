@@ -15,6 +15,7 @@ import { sendTopicNotification } from "../utils/notification";
 import { getSocketIo } from "../config/socket";
 import { validateParcelInput } from "../validations/parcel.validations";
 import { CustomError } from "../utils/custom_error.util";
+import { generateParcelCode } from "../utils/generateParcelCodes";
 
 
 export const registerParcel = async (req: Request | any, res: Response): Promise<void> => {
@@ -26,6 +27,7 @@ export const registerParcel = async (req: Request | any, res: Response): Promise
 
     const sender_phone = sender.phone;
     const receiver_phone = receiver.phone;
+    const code = await generateParcelCode(req.body.parcel.pickup);
 
     const parcelData = {
       sender_name: sender.name,
@@ -41,7 +43,7 @@ export const registerParcel = async (req: Request | any, res: Response): Promise
       destination: parcel.destination,
       pickup: parcel.pickup,
       price: parcel.price,
-      code: parcel.code,
+      code: code,
       createdBy: req?.user.userId,
       business: req?.user.business
     };
