@@ -234,6 +234,10 @@ export const Subscribe = async (req: Request | any, res: Response | any) => {
             title: "Opening Down system",
             body: `Hello ${pickup.pickup_name},\nLets Try Again Today\nHave a fruitful service Day.`,
         });
+        res.status(201).json(
+            { message: "The pickup is  openned now " }
+        );
+        return;
 
     } catch (error) {
 
