@@ -11,9 +11,7 @@ export const validateUserInput = (data: any) => {
     if (Validator.isEmpty(data.name)) {
         errors.name = 'Name  field is required';
     }
-    if (Validator.isEmpty(data.pickup)) {
-        errors.pickup = 'Pickup  field is required';
-    }
+
     if (Validator.isEmpty(data.phone_number)) {
         errors.phone_number = 'phone number  field is required';
     }
