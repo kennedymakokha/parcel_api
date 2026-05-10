@@ -11,14 +11,12 @@ export const validateUserInput = (data: any) => {
     if (Validator.isEmpty(data.name)) {
         errors.name = 'Name  field is required';
     }
-
     if (Validator.isEmpty(data.phone_number)) {
         errors.phone_number = 'phone number  field is required';
     }
     if (Validator.isEmpty(data.identification_No)) {
         errors.identification_No = 'ID No  field is required';
     }
-
     return {
         errors,
         isValid: isEmpty(errors)
