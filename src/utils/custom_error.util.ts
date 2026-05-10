@@ -7,7 +7,7 @@ export const CustomError = (
 
     if (!isValid) {
         const firstError = Object.values(errors)[0];
-        res.status(400).json(firstError);
+        res.status(400).json({message:firstError});
         return false; // <== Tell controller to stop
     }
 
