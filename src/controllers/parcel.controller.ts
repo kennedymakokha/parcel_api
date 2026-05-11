@@ -106,7 +106,7 @@ export const GetParcels = async (req: Request | any, res: Response | any) => {
         filter.pickup = sentTo;
       }
     }
-    else if (status === "Pending Dispatch") {
+    else if (status === "Pending Dispatch"||status === "Cancelled") {
       // ONLY sentFrom matters
       if (sentFrom) {
         filter.sentFrom = sentFrom;

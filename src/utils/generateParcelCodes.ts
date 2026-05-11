@@ -57,7 +57,7 @@ export const generateParcelCode = async (
 
   const sequence = counter.seq
     .toString()
-    .padStart(6, "0");
+    .padStart(4, "0");
 
   /**
    * FINAL CODE
