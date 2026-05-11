@@ -1,26 +1,69 @@
-import { parcelDriverModel } from "../models/parcelDriverModel";
+// ====================================
+// utils/generateParcelCode.ts
+// ====================================
+
+import { ParcelCounterModel } from "../models/parcelCounter.model";
 import { PickuUpModel } from "../models/pickups.model";
 
-export const generateParcelCode = async (pickupId: string) => {
-  const pickup :any= await PickuUpModel.findById(pickupId);
 
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+export const generateParcelCode = async (
+  pickupId: string
+): Promise<string> => {
+  const pickup: any = await PickuUpModel.findById(pickupId);
 
-  const endOfDay = new Date();
-  endOfDay.setHours(23, 59, 59, 999);
+  if (!pickup) {
+    throw new Error("Pickup not found");
+  }
 
-  const count = await parcelDriverModel.countDocuments({
-    pickup,
-    createdAt: {
-      $gte: startOfDay,
-      $lte: endOfDay,
+  /**
+   * FORMAT DATE
+   * Example: 20260510
+   */
+
+  const today = new Date();
+
+  const yyyy = today.getFullYear();
+
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+
+  const dd = String(today.getDate()).padStart(2, "0");
+
+  const todayString = `${yyyy}${mm}${dd}`;
+
+  /**
+   * ATOMIC COUNTER UPDATE
+   */
+
+  const counter = await ParcelCounterModel.findOneAndUpdate(
+    {
+      pickup: pickupId,
+      date: todayString,
     },
-  });
+    {
+      $inc: {
+        seq: 1,
+      },
+    },
+    {
+      new: true,
+      upsert: true,
+    }
+  );
 
-  const sequence = (count + 1)
+  /**
+   * PAD NUMBER
+   * Example: 000001
+   */
+
+  const sequence = counter.seq
     .toString()
-    .padStart(6, '0');
+    .padStart(6, "0");
 
-  return `${pickup.short_code}-${sequence}`;
+  /**
+   * FINAL CODE
+   * Example:
+   * NRB-20260510-000001
+   */
+
+  return `${pickup.short_code}-${todayString}-${sequence}`;
 };
