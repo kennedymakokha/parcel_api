@@ -49,7 +49,7 @@ export const startPickupPaidResetCron = () => {
                         socket_topic_id: `pickup_${pickupId}`,
                         event_name: "pickup_shut",
                         audience: `${pickup.pickup_name}`,
-                        title: "Shutting Down system",
+                        title: "System Shutting Down ",
                         body: `Hello ${pickup.pickup_name},\nToday's shift has now ended.\nThank you for your support today.\nAny pending matters have been forwarded to tomorrow.`,
                     });
 

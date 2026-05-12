@@ -7,7 +7,7 @@ import { ParcelJourneys } from "../models/parcelJouney.model";
 import { Parcels } from "../models/parcel.model";
 import { parcelDriverModel } from "../models/parcelDriverModel";
 import { Trucks } from "../models/trucks.model";
-import moment from "moment";
+import moment from "moment-timezone";
 import { sendTextMessage } from "../utils/sms_sender.util";
 import admin from "firebase-admin";
 import { PickuUpModel } from "../models/pickups.model";
@@ -16,6 +16,7 @@ import { getSocketIo } from "../config/socket";
 import { validateParcelInput } from "../validations/parcel.validations";
 import { CustomError } from "../utils/custom_error.util";
 import { generateParcelCode } from "../utils/generateParcelCodes";
+import { getDateRangeByFilter } from "../utils/timezone.util";
 
 
 export const registerParcel = async (req: Request | any, res: Response): Promise<void> => {
@@ -106,7 +107,7 @@ export const GetParcels = async (req: Request | any, res: Response | any) => {
         filter.pickup = sentTo;
       }
     }
-    else if (status === "Pending Dispatch"||status === "Cancelled") {
+    else if (status === "Pending Dispatch" || status === "Cancelled") {
       // ONLY sentFrom matters
       if (sentFrom) {
         filter.sentFrom = sentFrom;
@@ -549,8 +550,6 @@ export const dispatchParcels = async (req: Request | any, res: Response): Promis
       const pickupId = Parcel.sentFrom._id.toString();
       const io = getSocketIo();
       io.to(`pickup_${pickupId}`).emit("Parcel-change", Parcel);
-
-
     }
     await session.commitTransaction();
     session.endSession();
@@ -696,11 +695,15 @@ export const GetParcelsCount = async (req: Request | any, res: Response | any) =
   try {
     // console.log("object");
     const { displayDate, pickupId } = req.query
-    const start = new Date(displayDate);
-    start.setHours(0, 0, 0, 0);
+    const start = moment
+      .tz(displayDate, "Africa/Nairobi")
+      .startOf("day")
+      .toDate();
 
-    const end = new Date(displayDate);
-    end.setHours(23, 59, 59, 999);
+    const end = moment
+      .tz(displayDate, "Africa/Nairobi")
+      .endOf("day")
+      .toDate();
 
     const count = await Parcels.countDocuments({
       sentFrom: new mongoose.Types.ObjectId(pickupId),
@@ -720,48 +723,13 @@ export const getFullDashboard = async (req: Request | any, res: Response): Promi
   const user = req.user; // assume middleware attaches { role, business }
 
   // Utility: compute date range
-  const getDateRange = () => {
-    const now = new Date();
-    let start: Date;
-    let end: Date = new Date();
-
-    switch (filterType) {
-      case "today":
-        start = new Date(now.setHours(0, 0, 0, 0));
-        break;
-      case "yesterday":
-        start = new Date();
-        start.setDate(start.getDate() - 1);
-        start.setHours(0, 0, 0, 0);
-        end = new Date();
-        end.setDate(end.getDate() - 1);
-        end.setHours(23, 59, 59, 999);
-        break;
-      case "week":
-        start = new Date();
-        start.setDate(start.getDate() - 7);
-        break;
-      case "month":
-        start = new Date();
-        start.setDate(start.getDate() - 30);
-        break;
-      case "year":
-        start = new Date(now.getFullYear(), 0, 1);
-        break;
-      case "custom":
-        start = startDate ? new Date(startDate) : new Date(0);
-        end = endDate ? new Date(endDate) : new Date();
-        break;
-      default:
-        start = new Date(0);
-    }
-
-    return { start, end };
-  };
 
   try {
-    const { start, end } = getDateRange();
-
+    const { start, end } = getDateRangeByFilter(
+      filterType,
+      startDate,
+      endDate
+    );
     // --- Pickup-specific KPIs ---
     const totalParcels = await Parcels.countDocuments({
       sentFrom: pickupId,

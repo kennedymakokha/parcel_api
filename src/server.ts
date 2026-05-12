@@ -1,6 +1,6 @@
+process.env.TZ = "Africa/Nairobi";
 import dotenv from "dotenv";
 dotenv.config();
-
 import express from "express";
 import { createServer } from "http";
 import { Server as IOServer } from "socket.io";

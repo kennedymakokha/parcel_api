@@ -11,43 +11,106 @@ import { emitToDevice, getSocketIo } from "../config/socket";
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
+import moment from "moment-timezone";
 import mongoose from "mongoose";
 import { PickuUpModel } from "../models/pickups.model";
 import { Parcels } from "../models/parcel.model";
 import { sendTopicNotification } from "../utils/notification";
 
-export const Create = async (req: Request | any, res: Response): Promise<void> => {
-    // Start the session for the transaction
+export const Create = async (
+    req: Request | any,
+    res: Response
+): Promise<void> => {
 
     const session = await mongoose.startSession();
     session.startTransaction();
 
-
     try {
 
-
-        // Validation
+        // ✅ Validation
         await CustomError(validateBusinessInput, req.body, res);
 
+        // ✅ Format phone number
         let phone = await Format_phone_number(req.body.contact_number);
         req.body.contact_number = phone;
 
+        // ======================================================
+        // 🔍 CHECK DUPLICATE BUSINESS NAME
+        // ======================================================
 
-        // Check for existing business
-        const Exists = await BusinessModel.findOne({ business_name: req.body.business_name }).session(session);
-        if (Exists) {
-            throw new Error("BUSINESS_EXISTS");
+        const businessExists = await BusinessModel.findOne({
+            business_name: req.body.business_name,
+        }).session(session);
+
+        if (businessExists) {
+            await session.abortTransaction();
+
+            res.status(400).json({
+                ok: false,
+                message: "Business already exists",
+            });
+            return
         }
+
+        // ======================================================
+        // 🔍 CHECK DUPLICATE PHONE NUMBER
+        // ======================================================
+
+        const phoneExists = await User.findOne({
+            phone_number: req.body.contact_number,
+        }).session(session);
+
+        if (phoneExists) {
+            await session.abortTransaction();
+
+            res.status(400).json({
+                ok: false,
+                message: "Phone number already in use",
+            });
+            return
+        }
+
+        // ======================================================
+        // 🔍 CHECK DUPLICATE EMAIL (OPTIONAL)
+        // ======================================================
+
+        if (req.body.email) {
+
+            const emailExists = await User.findOne({
+                email: req.body.email,
+            }).session(session);
+
+            if (emailExists) {
+                await session.abortTransaction();
+
+                res.status(400).json({
+                    ok: false,
+                    message: "Email already in use",
+                });
+                return
+            }
+        }
+
+        // ======================================================
+        // ✅ CREATE BUSINESS
+        // ======================================================
 
         req.body.createdBy = req.user.userId;
 
-        // 1. Create Business
         const newbusiness = new BusinessModel(req.body);
+
         const business = await newbusiness.save({ session });
 
-        // Prepare Admin User Data
+        // ======================================================
+        // ✅ CREATE ADMIN USER
+        // ======================================================
+
         const salt = await bcrypt.genSalt(10);
-        const adminPassword = await bcrypt.hash(req.body.contact_number, salt);
+
+        const adminPassword = await bcrypt.hash(
+            req.body.contact_number,
+            salt
+        );
 
         const adminData = {
             ...req.body,
@@ -56,55 +119,73 @@ export const Create = async (req: Request | any, res: Response): Promise<void> =
             role: "superadmin",
             name: `${req.body.business_name}'s Admin`,
             business: business._id,
-            activated: true
+            activated: true,
         };
 
-        // 2. Create User
         const user = new User(adminData);
+
         await user.save({ session });
 
-        // 3. Create HQ Pickup
+        // ======================================================
+        // ✅ CREATE HQ PICKUP
+        // ======================================================
+
         const pickupData = {
             pickup_name: `${req.body.business_name} HQ`,
             phone_number: req.body.contact_number,
             contact_number: req.body.contact_number,
             business: business._id,
+            short_code:"HQ",
             createdBy: user._id,
             state: "active",
             isHQ: true,
-
         };
 
         const pickup = new PickuUpModel(pickupData);
-        const savedPickup = await pickup.save({ session });
-        // 4. Create Socket Room for Pickup
+
+        await pickup.save({ session });
+
+        // ======================================================
+        // ✅ SEND NOTIFICATION
+        // ======================================================
 
         await sendTopicNotification({
             topic: `superuser`,
             socket_topic_id: `superuser`,
-            event_name: "New  Business",
+            event_name: "New Business",
             audience: `superusers`,
-            title: 'New  Business',
-            body: `Hello , ${req.user.name} Has Registered a new  Business ${req.body.business_name}  `
+            title: "New Business",
+            body: `Hello, ${req.user.name} has registered a new business ${req.body.business_name}`,
         });
-        // If we reach here, everything is successful
+
+        // ======================================================
+        // ✅ COMMIT TRANSACTION
+        // ======================================================
+
         await session.commitTransaction();
-        res.status(201).json({ ok: true, message: "Business and Admin added successfully", newbusiness: business });
+
+        res.status(201).json({
+            ok: true,
+            message: "Business and Admin added successfully",
+            newbusiness: business,
+        });
         return
     } catch (error: any) {
-        // ROLLBACK the database changes
+
         await session.abortTransaction();
 
-        // CLEANUP: Delete the uploaded file since the DB record failed
+        console.log(error);
 
-        if (error.message === "BUSINESS_EXISTS") {
-            res.status(400).json("Business already exists");
-        } else {
-            res.status(500).json({ ok: false, message: "Server error", error: error.message });
-        }
+        res.status(500).json({
+            ok: false,
+            message: "Server error",
+            error: error.message,
+        });
+        return
     } finally {
-        // End the session
+
         session.endSession();
+
     }
 };
 export const CreatePickup = async (req: Request | any, res: Response): Promise<void> => {
@@ -231,7 +312,7 @@ export const Subscribe = async (req: Request | any, res: Response | any) => {
             socket_topic_id: `pickup_${pickupId}`,
             event_name: "pickup_open",
             audience: `${pickup.pickup_name}`,
-            title: "Opening Down system",
+            title: "System Reactivated",
             body: `Hello ${pickup.pickup_name},\nLets Try Again Today\nHave a fruitful service Day.`,
         });
         res.status(201).json(
@@ -347,69 +428,95 @@ export const Trash = async (req: Request | any, res: Response | any) => {
     }
 };
 
-export const getBusinessPickups = async (req: Request, res: Response): Promise<void> => {
+
+export const getBusinessPickups = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
     try {
+
         const businessId = req.params.id;
 
-        const start = new Date();
-        start.setHours(0, 0, 0, 0);
+        // ✅ Kenya timezone
+        const timezone = "Africa/Nairobi";
 
-        const end = new Date();
-        end.setHours(23, 59, 59, 999);
+        const start = moment
+            .tz(timezone)
+            .startOf("day")
+            .toDate();
 
-        let pickupFilter: any = { state: "active" };
+        const end = moment
+            .tz(timezone)
+            .endOf("day")
+            .toDate();
+
+        let pickupFilter: any = {
+            state: "active"
+        };
 
         if (mongoose.Types.ObjectId.isValid(businessId)) {
             pickupFilter.business = businessId;
         }
 
-        // ✅ 1. Get pickups
+        // ✅ Get pickups
         const pickups: any = await PickuUpModel.find(pickupFilter)
             .select("_id pickup_name")
             .populate("business", "business_name");
 
         const pickupIds = pickups.map((p: any) => p._id);
 
-        // ✅ 2. Aggregate parcel counts (ONE query)
+        // ✅ Aggregate today's parcels
         const parcelCounts = await Parcels.aggregate([
             {
                 $match: {
                     sentFrom: { $in: pickupIds },
-                    createdAt: { $gte: start, $lte: end },
-                },
+                    createdAt: {
+                        $gte: start,
+                        $lte: end
+                    }
+                }
             },
             {
                 $group: {
                     _id: "$sentFrom",
-                    count: { $sum: 1 },
-                },
-            },
+                    count: { $sum: 1 }
+                }
+            }
         ]);
 
-        // ✅ 3. Map counts to pickups
+        // ✅ Convert aggregate to map
         const countMap = new Map(
-            parcelCounts.map((p: any) => [p._id.toString(), p.count])
+            parcelCounts.map((p: any) => [
+                p._id.toString(),
+                p.count
+            ])
         );
 
+        // ✅ Merge counts with pickups
         const results = pickups.map((pickup: any) => ({
             pickupId: pickup._id,
             pickupName: pickup.pickup_name,
             business: pickup.business?.business_name || null,
-            parcelsToday: countMap.get(pickup._id.toString()) || 0,
+            parcelsToday:
+                countMap.get(pickup._id.toString()) || 0
         }));
 
         res.json({
             businessId,
-            date: start,
-            pickups: results,
+            timezone,
+            start,
+            end,
+            pickups: results
         });
 
     } catch (err) {
+
         console.error(err);
+
         res.status(500).json({
-            error: "Failed to fetch business pickups",
+            error: "Failed to fetch business pickups"
         });
+
     }
 };
-
 

@@ -34,21 +34,31 @@ export const Create = async (req: Request | any, res: Response) => {
         // 👇 2. CREATE DRIVER (if not provided)
         if (!driverId && driver) {
             // 🔍 check duplicates in users table
-            const existingUser = await User.findOne({
-                $or: [
-                    { phone_number: driver.phone_number },
-                    { identification_No: driver.identification_No },
-                ],
+            // 🔍 check duplicate phone number
+            const phoneExists = await User.findOne({
+                phone_number: driver.phone_number,
             }).session(session);
 
-            if (existingUser) {
+            if (phoneExists) {
                 await session.abortTransaction();
-                res.status(400).json({
-                    message: 'Driver already exists (phone or ID number in use)',
+                 res.status(400).json({
+                    message: 'Driver phone number already exists',
                 });
                 return
             }
 
+            // 🔍 check duplicate ID number
+            const idExists = await User.findOne({
+                identification_No: driver.identification_No,
+            }).session(session);
+
+            if (idExists) {
+                await session.abortTransaction();
+                 res.status(400).json({
+                    message: 'Driver ID number already exists',
+                });
+                return
+            }
             // 🔐 hash password (use phone as base for now)
             const salt = await bcrypt.genSalt(10);
             const password = await bcrypt.hash(driver.phone_number, salt);
