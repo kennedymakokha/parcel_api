@@ -283,6 +283,8 @@ export const CancelParcel = async (req: Request | any, res: Response | any) => {
     );
 
     const pickupId = existing.sentFrom._id.toString();
+    const io = getSocketIo();
+    io.to(`pickup_${pickupId}`).emit("Parcel-change", updates);
     await sendTopicNotification({
       topic: `pickup_${pickupId}_attendants`,
       socket_topic_id: `pickup_${pickupId}`,
@@ -675,13 +677,16 @@ export const collectParcel = async (req: Request | any, res: Response): Promise<
       { parcel_id: parcel._id },
       { CollectedAt: new Date(), handedOverBy: req?.user.userId }
     );
+    const pickupId = parcel.sentFrom._id.toString();
+
+  
     await sendTopicNotification({
-      topic: `pickup_${parcel.sentFrom}_attendants`,
-      socket_topic_id: `pickup_${parcel.sentFrom}`,
-      event_name: "Successful Delivery",
+      topic: `pickup_${pickupId}_attendants`,
+      socket_topic_id: `pickup_${pickupId}`,
+      event_name: "Parcel-change",
       audience: `${parcel.sentFrom.pickup_name}`,
       title: 'Successful Delivery',
-      body: `Hello ${parcel.sentFrom.pickup_name}, a parcel with code ${id} has been Collected by at ${parcel.receiver_name} of ID No ${req.body.reciever_ID}`
+      body: `Hello ${parcel.sentFrom.pickup_name}, a parcel with code ${parcel.code} has been Collected by  ${parcel.receiver_name} of ID No ${req.body.reciever_ID}`
     });
     res.json({ ok: true, message: "Parcel collected successfully" });
 
@@ -718,114 +723,143 @@ export const GetParcelsCount = async (req: Request | any, res: Response | any) =
 };
 
 
-export const getFullDashboard = async (req: Request | any, res: Response): Promise<void> => {
-  const { pickupId, filterType = "today", startDate, endDate } = req.query;
-  const user = req.user; // assume middleware attaches { role, business }
+export const getFullDashboard = async (
+  req: Request | any,
+  res: Response,
+): Promise<void> => {
+  const { pickupId, filterType = 'today', startDate, endDate } = req.query;
 
-  // Utility: compute date range
+  const user = req.user;
 
   try {
     const { start, end } = getDateRangeByFilter(
       filterType,
       startDate,
-      endDate
+      endDate,
     );
-    // --- Pickup-specific KPIs ---
-    const totalParcels = await Parcels.countDocuments({
-      sentFrom: pickupId,
+
+    /**
+     * BASE FILTER
+     * If attendant -> only fetch parcels created by them
+     */
+    const baseFilter: any = {
       createdAt: { $gte: start, $lte: end },
-    });
+    };
+
+    // pickup filter
+    if (pickupId) {
+      baseFilter.sentFrom = pickupId;
+    }
+
+    // attendant restriction
+    if (user?.role === 'attendant') {
+      baseFilter.createdBy = user.userId;
+    }
+
+    // --- Pickup-specific KPIs ---
+    const totalParcels = await Parcels.countDocuments(baseFilter);
 
     const delivered = await Parcels.countDocuments({
-      status: "Collected",
-      sentFrom: pickupId,
+      ...baseFilter,
+      status: 'Collected',
       updatedAt: { $gte: start, $lte: end },
     });
 
     const pending = await Parcels.countDocuments({
-      status: "Pending Dispatch",
-      sentFrom: pickupId,
-      createdAt: { $gte: start, $lte: end },
+      ...baseFilter,
+      status: 'Pending Dispatch',
     });
 
     const ontransit = await Parcels.countDocuments({
-      status: "In Transit",
-      sentFrom: pickupId,
-      createdAt: { $gte: start, $lte: end },
+      ...baseFilter,
+      status: 'In Transit',
     });
+
     const collected = await Parcels.countDocuments({
-      status: "Collected",
-      sentFrom: pickupId,
+      ...baseFilter,
+      status: 'Collected',
       updatedAt: { $gte: start, $lte: end },
     });
 
     const cancelled = await Parcels.countDocuments({
-      status: "Cancelled",
-      sentFrom: pickupId,
+      ...baseFilter,
+      status: 'Cancelled',
       updatedAt: { $gte: start, $lte: end },
     });
+
     const awaiting = await Parcels.countDocuments({
-      status: "Pending Collection",
       pickup: pickupId,
+      status: 'Pending Collection',
       updatedAt: { $gte: start, $lte: end },
+      ...(user?.role === 'attendant' && {
+        createdBy: user.userId,
+      }),
     });
 
     const hourlyTrends = await Parcels.aggregate([
       {
-        $match: {
-          sentFrom: pickupId,
-          createdAt: { $gte: start, $lte: end },
-        },
+        $match: baseFilter,
       },
       {
         $group: {
-          _id: { $hour: "$createdAt" },
+          _id: { $hour: '$createdAt' },
           count: { $sum: 1 },
         },
       },
-      { $sort: { _id: 1 } },
+      {
+        $sort: { _id: 1 },
+      },
     ]);
-    console.log(user);
-    // --- Admin grouping ---
-    let groupedByPickup: any = [];
-    if (user?.role === "superadmin") {
-      const pickups = await PickuUpModel.find({ business: user.business, state: "active" });
 
-      // Step 2: compute KPIs for each pickup
+    // --- Super Admin grouping ---
+    let groupedByPickup: any = [];
+
+    if (user?.role === 'superadmin') {
+      const pickups = await PickuUpModel.find({
+        business: user.business,
+        state: 'active',
+      });
+
       groupedByPickup = await Promise.all(
-        pickups.map(async (pickup) => {
-          const totalParcels = await Parcels.countDocuments({
+        pickups.map(async pickup => {
+          const pickupFilter = {
             sentFrom: pickup._id,
             createdAt: { $gte: start, $lte: end },
-          });
+          };
+
+          const totalParcels = await Parcels.countDocuments(pickupFilter);
 
           const delivered = await Parcels.countDocuments({
-            status: "Collected",
-            sentFrom: pickup._id,
+            ...pickupFilter,
+            status: 'Collected',
             updatedAt: { $gte: start, $lte: end },
           });
 
           const pending = await Parcels.countDocuments({
-            status: "Pending Dispatch",
-            sentFrom: pickup._id,
-            createdAt: { $gte: start, $lte: end },
+            ...pickupFilter,
+            status: 'Pending Dispatch',
           });
 
           const ontransit = await Parcels.countDocuments({
-            status: "In Transit",
-            sentFrom: pickup._id,
-            createdAt: { $gte: start, $lte: end },
+            ...pickupFilter,
+            status: 'In Transit',
           });
 
           const collected = await Parcels.countDocuments({
-            status: "Collected",
-            sentFrom: pickup._id,
+            ...pickupFilter,
+            status: 'Collected',
             updatedAt: { $gte: start, $lte: end },
           });
 
           const cancelled = await Parcels.countDocuments({
-            status: "Returned",
-            sentFrom: pickup._id,
+            ...pickupFilter,
+            status: 'Returned',
+            updatedAt: { $gte: start, $lte: end },
+          });
+
+          const awaiting = await Parcels.countDocuments({
+            pickup: pickup._id,
+            status: 'Pending Collection',
             updatedAt: { $gte: start, $lte: end },
           });
 
@@ -840,10 +874,8 @@ export const getFullDashboard = async (req: Request | any, res: Response): Promi
             collected,
             cancelled,
           };
-        })
+        }),
       );
-
-
     }
 
     res.json({
@@ -857,15 +889,18 @@ export const getFullDashboard = async (req: Request | any, res: Response): Promi
         collected,
         ontransit,
         cancelled,
+        awaiting,
         hourlyTrends,
       },
-      groupedByPickup, // only populated if admin
+      groupedByPickup,
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to fetch dashboard KPIs" });
+
+    res.status(500).json({
+      error: 'Failed to fetch dashboard KPIs',
+    });
   }
 };
-
 
 

@@ -10,9 +10,10 @@ import authRoutes from './routes/auth.routes';
 import parcelRoute from './routes/parcel.route';
 import businessRoute from './routes/business.routes';
 import TrucksRoute from './routes/trucks.route'
+import paymentRoutes from './routes/payment.route'
 import ClientRoute from './routes/client.route'
 import ClocksRoute from './routes/clocks.route'
-import PaymentRoute from './routes/payments'
+import MpesaRoute from './routes/payments'
 import { authenticateToken } from "./middleware/auth.middleware";
 import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
@@ -78,7 +79,9 @@ app.use("/api/business", authenticateToken, businessRoute);
 app.use("/api/parcel", authenticateToken, parcelRoute);
 app.use("/api/clocks", authenticateToken, ClocksRoute);
 app.use("/api/trucks", authenticateToken, TrucksRoute);
-app.use("/api/payments", PaymentRoute);
+app.use("/api/m-pesa", MpesaRoute);
+app.use("/api/payments", authenticateToken, paymentRoutes);
+
 app.use("/api/clients", ClientRoute);
 app.use('*', (req, res) => {
   res.status(404).json({ message: 'API endpoint not found' });

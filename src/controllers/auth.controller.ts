@@ -96,7 +96,7 @@ export const getUsers = async (req: Request | any, res: Response) => {
             role,
         } = req.query;
 
-        const filter: any = {};
+        const filter: any = { deleted_at: null };
 
         // ✅ CLEAN pickup (handle "undefined", "", null)
         if (
@@ -413,4 +413,17 @@ export const logout = async (req: Request, res: Response) => {
     return
 };
 
+export const Trash = async (req: Request | any, res: Response | any) => {
+    try {
+        let deleted: any = await User.findOneAndUpdate({ _id: req.params.id }, { deleted_at: Date.now() }, { new: true, useFindAndModify: false })
+        res.status(200).json(`${deleted.name} deleted successfully`)
+        return
+    } catch (error) {
+        console.log(error);
+        res.status(404).json(error);
+
+        return
+        throw new Error("deletion Failed ")
+    }
+};
 

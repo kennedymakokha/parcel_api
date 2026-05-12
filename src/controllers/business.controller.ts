@@ -117,7 +117,7 @@ export const Create = async (
             password: adminPassword,
             phone_number: req.body.contact_number,
             role: "superadmin",
-            name: `${req.body.business_name}'s Admin`,
+            name: `Admini`,
             business: business._id,
             activated: true,
         };
@@ -135,7 +135,7 @@ export const Create = async (
             phone_number: req.body.contact_number,
             contact_number: req.body.contact_number,
             business: business._id,
-            short_code:"HQ",
+            short_code: "HQ",
             createdBy: user._id,
             state: "active",
             isHQ: true,
@@ -231,7 +231,7 @@ export const CreatePickup = async (req: Request | any, res: Response): Promise<v
             password: adminPassword,
             phone_number: req.body.contact_number,
             role: "admin",
-            name: `${req.body.pickup_name}'s Admin`,
+            name: `${req.body.short_code}'s Admin`,
             business: req.user.business,
             pickup: pickup._id,
             activated: true
@@ -370,10 +370,6 @@ export const GetPickupsForClient = async (req: Request | any, res: Response | an
 
     }
 };
-
-
-
-
 export const Get_one = async (req: Request | any, res: Response | any) => {
     try {
         const business_obj: any = await BusinessModel.findById(req.user.business)
@@ -393,7 +389,8 @@ export const Update = async (req: Request | any, res: Response | any) => {
         const existing = await BusinessModel.findById(id);
 
         if (!existing) {
-            return res.status(404).json({ message: "Business not found" });
+            res.status(404).json({ message: "Business not found" });
+            return
         }
 
 
@@ -413,12 +410,58 @@ export const Update = async (req: Request | any, res: Response | any) => {
     }
 };
 
+export const UpdatePickup = async (req: Request | any, res: Response | any) => {
+    try {
+        const { id } = req.params;
 
+        const existing = await PickuUpModel.findById(id);
+
+        if (!existing) {
+            res.status(404).json({ message: "pickup not found" });
+            return
+        }
+
+
+        const updates: any = await PickuUpModel.findOneAndUpdate(
+            { _id: id },
+            req.body,
+            { new: true }
+        );
+        const io = getSocketIo();
+        const pickupId = updates._id.toString();
+        await sendTopicNotification({
+            topic: `pickup_${pickupId}_attendants`,
+            socket_topic_id: `pickup_${pickupId}`,
+            event_name: "pickup:update",
+            audience: `${updates.pickup_name}`,
+            title: 'Pickup:update',
+            body: `Hello, New Updates  on our Station Details.`
+        });
+        res.status(200).json(updates);
+
+    } catch (error) {
+        console.error(error);
+        res.status(400).json(error);
+    }
+};
 
 export const Trash = async (req: Request | any, res: Response | any) => {
     try {
         let deleted: any = await BusinessModel.findOneAndUpdate({ _id: req.params.id }, { deletedAt: Date.now() }, { new: true, useFindAndModify: false })
         res.status(200).json(`${deleted.business_name} deleted successfully`)
+        return
+    } catch (error) {
+        res.status(404).json(error);
+
+        return
+        throw new Error("deletion Failed ")
+    }
+};
+
+export const TrashPickup = async (req: Request | any, res: Response | any) => {
+    try {
+        let deleted: any = await PickuUpModel.findOneAndUpdate({ _id: req.params.id }, { deletedAt: Date.now() }, { new: true, useFindAndModify: false })
+        res.status(200).json(`${deleted.pickup_name} deleted successfully`)
         return
     } catch (error) {
         res.status(404).json(error);

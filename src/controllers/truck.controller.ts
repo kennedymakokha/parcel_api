@@ -41,7 +41,7 @@ export const Create = async (req: Request | any, res: Response) => {
 
             if (phoneExists) {
                 await session.abortTransaction();
-                 res.status(400).json({
+                res.status(400).json({
                     message: 'Driver phone number already exists',
                 });
                 return
@@ -54,7 +54,7 @@ export const Create = async (req: Request | any, res: Response) => {
 
             if (idExists) {
                 await session.abortTransaction();
-                 res.status(400).json({
+                res.status(400).json({
                     message: 'Driver ID number already exists',
                 });
                 return
@@ -142,7 +142,7 @@ export const Get = async (req: Request | any, res: Response | any) => {
     try {
         const io = getSocketIo();
         const { page = 1, limit = 10, } = req.query;
-        const trucks: any = await Trucks.find({ business: req.user.business, deletedAt: null }).skip((page - 1) * limit)
+        const trucks: any = await Trucks.find({ business: req.user.business, deletedAt: null }).skip((page - 1) * limit).populate("driverId", "name phone_number identification_No")
             .limit(parseInt(limit))
             .sort({ createdAt: -1 })
 
@@ -177,37 +177,186 @@ export const Get_one = async (req: Request | any, res: Response | any) => {
 
     }
 };
-export const Update = async (req: Request | any, res: Response | any) => {
+export const Update = async (
+    req: Request | any,
+    res: Response | any
+) => {
+    const session = await mongoose.startSession();
+
+    session.startTransaction();
+
+    let createdDriver: any = null;
+
     try {
         const { id } = req.params;
 
-        // const existing = await Trucks.findById(id);
-        const existing = await Trucks.findOne({
-            driverId: req.body.driverId,
-            _id: { $ne: req.params.id } // exclude current truck
-        });
+        const {
+            plate,
+            model,
+            capacity,
+            driverId,
+            driver,
+        } = req.body;
 
-        if (!existing) {
-            return res.status(404).json({ message: "Truck not found" });
+        // 🔍 FIND CURRENT TRUCK
+        const existingTruck = await Trucks.findById(id).session(session);
+
+        if (!existingTruck) {
+            await session.abortTransaction();
+
+            return res.status(404).json({
+                message: 'Truck not found',
+            });
         }
 
+        // 🔍 CHECK DUPLICATE PLATE
+        if (plate) {
+            const plateExists = await Trucks.findOne({
+                plate: plate.trim().toUpperCase(),
+                _id: { $ne: id },
+            }).session(session);
 
-        const updates = await Trucks.findOneAndUpdate(
-            { _id: id },
-            req.body,
-            { new: true }
+            if (plateExists) {
+                await session.abortTransaction();
+
+                return res.status(400).json({
+                    message: 'Truck plate already exists',
+                });
+            }
+        }
+
+        let finalDriverId = driverId || existingTruck.driverId;
+
+        // 👇 CREATE NEW DRIVER IF PROVIDED
+        if (!driverId && driver) {
+            // CHECK PHONE
+            const phoneExists = await User.findOne({
+                phone_number: driver.phone_number,
+            }).session(session);
+
+            if (phoneExists) {
+                await session.abortTransaction();
+
+                return res.status(400).json({
+                    message:
+                        'Driver phone number already exists',
+                });
+            }
+
+            // CHECK ID NUMBER
+            const idExists = await User.findOne({
+                identification_No:
+                    driver.identification_No,
+            }).session(session);
+
+            if (idExists) {
+                await session.abortTransaction();
+
+                return res.status(400).json({
+                    message:
+                        'Driver ID number already exists',
+                });
+            }
+
+            // HASH PASSWORD
+            const salt = await bcrypt.genSalt(10);
+
+            const password = await bcrypt.hash(
+                driver.phone_number,
+                salt,
+            );
+
+            const newDriver = new User({
+                name: driver.name,
+                phone_number: driver.phone_number,
+                identification_No:
+                    driver.identification_No,
+                role: 'driver',
+                password,
+                createdBy: req.user.userId,
+                business: req.user.business,
+            });
+
+            createdDriver = await newDriver.save({
+                session,
+            });
+
+            finalDriverId = createdDriver._id;
+        }
+
+        // 🔒 CHECK DRIVER ASSIGNMENT
+        if (finalDriverId) {
+            const assignedTruck = await Trucks.findOne({
+                driverId: finalDriverId,
+                _id: { $ne: id },
+            }).session(session);
+
+            if (assignedTruck) {
+                await session.abortTransaction();
+
+                return res.status(400).json({
+                    message:
+                        'Driver is already assigned to another truck',
+                });
+            }
+        }
+
+        // 🚛 UPDATE TRUCK
+        const updatedTruck = await Trucks.findByIdAndUpdate(
+            id,
+            {
+                plate: plate?.trim().toUpperCase(),
+                model: model?.trim(),
+                capacity: capacity,
+                driverId: finalDriverId,
+            },
+            {
+                new: true,
+                session,
+            },
+        ).populate('driverId');
+
+        // 🔗 UPDATE DRIVER MAPPING
+        await truckDriverModel.findOneAndUpdate(
+            {
+                truckId: id,
+            },
+            {
+                driverId: finalDriverId,
+            },
+            {
+                new: true,
+                upsert: true,
+                session,
+            },
         );
+
+        // ✅ COMMIT
+        await session.commitTransaction();
+
+        // 🔌 SOCKET
         const io = getSocketIo();
-        io?.emit("trucks:update", updates);
 
-        res.status(200).json(updates);
+        io?.emit('trucks:update', updatedTruck);
 
+        return res.status(200).json({
+            ok: true,
+            message: 'Truck updated successfully',
+            truck: updatedTruck,
+        });
     } catch (error) {
-        console.error(error);
-        res.status(400).json(error);
+        await session.abortTransaction();
+
+        console.log(error);
+
+        return res.status(500).json({
+            message: 'Server error',
+            error,
+        });
+    } finally {
+        session.endSession();
     }
 };
-
 
 
 export const Trash = async (req: Request | any, res: Response | any) => {

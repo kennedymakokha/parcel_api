@@ -61,10 +61,7 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
         let io = await getSocketIo()
 
         const { amount, phone_number, pickup_id } = req.body;
-
-        // console.log(agent)
-        // res.status(500).json({ message: "Payment not verified. Please try again later." });
-        // return
+        console.log(req.body);
         const pickup: any = await PickuUpModel.findById(pickup_id)
         const pickupId = pickup_id.toString();
         const response = await Mpesa_stk(phone_number, Number(amount), req.user._id, pickup);
@@ -129,7 +126,7 @@ export const makePayment = async (req: Request | any, res: Response | any) => {
                 amount,
                 MpesaReceiptNumber,
                 ResultDesc,
-                message:ResultDesc, 
+                message: ResultDesc,
             });
 
             let io = getSocketIo()

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Create, CreatePickup, Get, Get_one, getBusinessPickups, GetPickups, Subscribe, Trash, Update, } from "../controllers/business.controller";
+import { Create, CreatePickup, Get, Get_one, getBusinessPickups, GetPickups, Subscribe, Trash, TrashPickup, Update, UpdatePickup, } from "../controllers/business.controller";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -31,6 +31,8 @@ router.post("/pickup/opening", Subscribe);
 router.post("/create/pickup",  CreatePickup);
 router.get("/get/pickups",  GetPickups);
 router.put("/:id", Update);
+router.put("/pickup/:id", UpdatePickup);
+router.delete("/pickup/:id", TrashPickup);
 router.delete("/:id", Trash);
 router.get("/my-business", Get_one);
 router.get("/:id/pickups", getBusinessPickups);

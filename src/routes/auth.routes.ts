@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { register, logout, refresh, session_Check, updatePassword, activateuser, requestToken, verifyuser, getUsers,  UpdatedSince, getUser, Update, login } from "../controllers/auth.controller";
+import { register, logout, refresh, session_Check, updatePassword, activateuser, requestToken, verifyuser, getUsers,  UpdatedSince, getUser, Update, login, Trash } from "../controllers/auth.controller";
 import { authenticateToken } from "../middleware/auth.middleware";
 
 const router = Router();
@@ -57,6 +57,7 @@ router.post("/reset-password", updatePassword);
 router.post("/activate-user", activateuser);
 router.get("/active-user", getUser);
 router.put("/:id", Update);
+router.delete("/:id", Trash);
 router.post("/verify-otp", verifyuser);
 router.post("/request-otp", requestToken);
 router.post("/logout", logout);
