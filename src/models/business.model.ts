@@ -6,6 +6,7 @@ const businessScema = new mongoose.Schema({
   phone_number: { type: String },
   working_hrs: { type: String, default: "8-17" },
   contact_number: { type: String },
+  contactName:{type:String},
   printQr: { type: Boolean, default: false },
   kra_pin: { type: String },
   latitude: Number,

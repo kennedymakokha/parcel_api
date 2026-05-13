@@ -115,9 +115,10 @@ export const Create = async (
         const adminData = {
             ...req.body,
             password: adminPassword,
+
             phone_number: req.body.contact_number,
             role: "superadmin",
-            name: `Admini`,
+            name: req.body.contactName,
             business: business._id,
             activated: true,
         };
@@ -231,7 +232,7 @@ export const CreatePickup = async (req: Request | any, res: Response): Promise<v
             password: adminPassword,
             phone_number: req.body.contact_number,
             role: "admin",
-            name: `${req.body.short_code}'s Admin`,
+            name: req.body.contactName,
             business: req.user.business,
             pickup: pickup._id,
             activated: true
@@ -477,25 +478,36 @@ export const getBusinessPickups = async (
     res: Response
 ): Promise<void> => {
     try {
-
         const businessId = req.params.id;
+        const filter = req.query.filter as string || "today"; // default to today
 
         // ✅ Kenya timezone
         const timezone = "Africa/Nairobi";
 
-        const start = moment
-            .tz(timezone)
-            .startOf("day")
-            .toDate();
+        let start: Date;
+        let end: Date;
 
-        const end = moment
-            .tz(timezone)
-            .endOf("day")
-            .toDate();
+        switch (filter) {
+            case "week":
+                start = moment.tz(timezone).startOf("week").toDate();
+                end = moment.tz(timezone).endOf("week").toDate();
+                break;
+            case "month":
+                start = moment.tz(timezone).startOf("month").toDate();
+                end = moment.tz(timezone).endOf("month").toDate();
+                break;
+            case "year":
+                start = moment.tz(timezone).startOf("year").toDate();
+                end = moment.tz(timezone).endOf("year").toDate();
+                break;
+            case "today":
+            default:
+                start = moment.tz(timezone).startOf("day").toDate();
+                end = moment.tz(timezone).endOf("day").toDate();
+                break;
+        }
 
-        let pickupFilter: any = {
-            state: "active"
-        };
+        let pickupFilter: any = { state: "active" };
 
         if (mongoose.Types.ObjectId.isValid(businessId)) {
             pickupFilter.business = businessId;
@@ -508,7 +520,7 @@ export const getBusinessPickups = async (
 
         const pickupIds = pickups.map((p: any) => p._id);
 
-        // ✅ Aggregate today's parcels
+        // ✅ Aggregate parcels based on filter
         const parcelCounts = await Parcels.aggregate([
             {
                 $match: {
@@ -529,10 +541,7 @@ export const getBusinessPickups = async (
 
         // ✅ Convert aggregate to map
         const countMap = new Map(
-            parcelCounts.map((p: any) => [
-                p._id.toString(),
-                p.count
-            ])
+            parcelCounts.map((p: any) => [p._id.toString(), p.count])
         );
 
         // ✅ Merge counts with pickups
@@ -540,26 +549,130 @@ export const getBusinessPickups = async (
             pickupId: pickup._id,
             pickupName: pickup.pickup_name,
             business: pickup.business?.business_name || null,
-            parcelsToday:
-                countMap.get(pickup._id.toString()) || 0
+            parcelsCount: countMap.get(pickup._id.toString()) || 0
         }));
 
         res.json({
             businessId,
             timezone,
+            filter,
             start,
             end,
             pickups: results
         });
 
     } catch (err) {
-
         console.error(err);
-
-        res.status(500).json({
-            error: "Failed to fetch business pickups"
-        });
-
+        res.status(500).json({ error: "Failed to fetch business pickups" });
     }
 };
+
+export const getPickupUserStats = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const pickupId = req.params.id;
+    const filter = (req.query.filter as string) || "today"; // default to today
+
+    // ✅ Kenya timezone
+    const timezone = "Africa/Nairobi";
+
+    let start: Date;
+    let end: Date;
+
+    switch (filter) {
+      case "week":
+        start = moment.tz(timezone).startOf("week").toDate();
+        end = moment.tz(timezone).endOf("week").toDate();
+        break;
+      case "month":
+        start = moment.tz(timezone).startOf("month").toDate();
+        end = moment.tz(timezone).endOf("month").toDate();
+        break;
+      case "year":
+        start = moment.tz(timezone).startOf("year").toDate();
+        end = moment.tz(timezone).endOf("year").toDate();
+        break;
+      case "today":
+      default:
+        start = moment.tz(timezone).startOf("day").toDate();
+        end = moment.tz(timezone).endOf("day").toDate();
+        break;
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(pickupId)) {
+       res.status(400).json({ error: "Invalid pickupId" });
+       return
+    }
+
+    // ✅ Ensure pickup exists
+    const pickup = await PickuUpModel.findById(pickupId)
+      .select("_id pickup_name business")
+      .populate("business", "business_name");
+
+    if (!pickup) {
+       res.status(404).json({ error: "Pickup not found" });
+       return
+    }
+
+    // ✅ Aggregate parcels grouped by createdBy
+   const parcelCounts = await Parcels.aggregate([
+  {
+    $match: {
+      sentFrom: pickup._id,
+      createdAt: { $gte: start, $lte: end },
+    },
+  },
+  {
+    $group: {
+      _id: "$createdBy", // group by user
+      count: { $sum: 1 },
+    },
+  },
+  {
+    $lookup: {
+      from: "user_tb", // ✅ must match the actual collection name
+      localField: "_id",
+      foreignField: "_id",
+      as: "user",
+    },
+  },
+  { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+  {
+    $project: {
+      userId: "$_id",
+      name: "$user.name", // ✅ now will resolve correctly
+      parcelsCount: "$count",
+    },
+  },
+]);
+
+
+    // ✅ Response body same shape as before
+    const results = parcelCounts.map((u: any) => ({
+      pickupId: u.userId,              // same key, but now userId
+      pickupName: u.name || null,      // same key, but now user name
+    //   business: pickup.business?.business_name || null, // use populated business
+      parcelsCount: u.parcelsCount || 0,
+    }));
+
+    res.json({
+      pickupId,
+      pickupName: pickup.pickup_name,
+    //   business: pickup.business?.business_name || null,
+      timezone,
+      filter,
+      start,
+      end,
+      pickups: results, // same key as before
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch pickup user stats" });
+  }
+};
+
+
+
 
