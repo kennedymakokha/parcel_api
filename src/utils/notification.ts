@@ -36,7 +36,7 @@ export const sendTopicNotification = async ({ topic, title, body, audience, sock
 
 
 
-const sendPushNotification = async ({ token, title, body, data = {} }: any) => {
+export const sendPushNotification = async ({ token, title, body, data = {} }: any) => {
     try {
         const message = {
             token,

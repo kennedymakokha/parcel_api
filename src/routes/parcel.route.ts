@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { collectParcel, dispatchParcels, getParcels, GetParcels, markParcelArrived, registerParcel, GetParcelJourney, getTruckParcelCount, getParcelStatusCount, getFullDashboard, GetParcelsCount } from "../controllers/parcel.controller";
+import { collectParcel, dispatchParcels, getParcels, GetParcels, markParcelArrived, registerParcel, GetParcelJourney, getTruckParcelCount, getParcelStatusCount, getFullDashboard, GetParcelsCount, getDriverPickupStats } from "../controllers/parcel.controller";
 
 const router = Router();
 
@@ -15,6 +15,7 @@ router.get("/trucks/count", getTruckParcelCount);
 router.get("/status/count", getParcelStatusCount);
 router.get("/events/stats", getFullDashboard);
 router.get("/daily/count", GetParcelsCount);
+router.get("/driver-pickups/count/:id", getDriverPickupStats);
 
 
 

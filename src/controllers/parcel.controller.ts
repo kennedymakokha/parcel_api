@@ -11,7 +11,7 @@ import moment from "moment-timezone";
 import { sendTextMessage } from "../utils/sms_sender.util";
 import admin from "firebase-admin";
 import { PickuUpModel } from "../models/pickups.model";
-import { sendTopicNotification } from "../utils/notification";
+import { sendPushNotification, sendTopicNotification } from "../utils/notification";
 import { getSocketIo } from "../config/socket";
 import { validateParcelInput } from "../validations/parcel.validations";
 import { CustomError } from "../utils/custom_error.util";
@@ -577,77 +577,107 @@ export const markParcelArrived = async (req: Request | any, res: Response): Prom
   try {
     const { id } = req.params;
 
-    const parcel: any = await Parcels.findOne({ code: id }).populate('pickup', "pickup_name");
+    // 1. Fetch parcel and populate the current driver to get their info/FCM token
+    const parcel: any = await Parcels.findOne({ code: id })
+      .populate('pickup', "pickup_name phone_number")
+      .populate('currentDriver');
 
+    if (!parcel) {
+      res.status(404).json({ message: "Parcel not found" });
+      return;
+    }
 
-    if (parcel?.pickup._id.toString() !== req?.user.pickup.toString()) {
-      const target_dest: any = await PickuUpModel.findById(req?.user.pickup)
-      const dest: any = await PickuUpModel.findById(parcel?.pickup._id)
+    // Capture driver and pickup details before we clear them in the update
+    const driver = parcel.currentDriver;
+    const targetPickupId = parcel.pickup._id;
+
+    // Logic for Wrong Destination Rerouting
+    if (parcel.pickup._id.toString() !== req.user.pickup.toString()) {
+      const attendantPickup: any = await PickuUpModel.findById(req.user.pickup);
+      const originalDest: any = await PickuUpModel.findById(parcel.pickup._id);
+
       await Parcels.findOneAndUpdate({ code: id }, {
         status: "Pending Dispatch",
-        currentDriver: null,
-        sentFrom: dest._id,
+        sentFrom: attendantPickup._id, // Set the current location as the sender
         rerouted: true,
-        currentTruck: null
       });
-      const pickupId = target_dest._id.toString();
+
+      const pickupIdStr = originalDest._id.toString();
       await sendTopicNotification({
-        topic: `pickup_${pickupId}_attendants`,
-        socket_topic_id: `pickup_${pickupId}`,
+        topic: `pickup_${pickupIdStr}_attendants`,
+        socket_topic_id: `pickup_${pickupIdStr}`,
         event_name: "Wrong Destination Parcel Rerouting",
-        audience: `${target_dest.pickup_name}`,
+        audience: `${originalDest.pickup_name}`,
         title: 'Wrong Destination',
-        body: `Hello ${target_dest.pickup_name}, a parcel with code ${id} has been wrongly delivered at ${dest.pickup_name}. We are working to ship it back to you.\nWe are sorry for the inconvenience caused.\nFor more information contact ${dest.phone_number}.`
+        body: `Hello ${originalDest.pickup_name}, a parcel with code ${id} has been wrongly delivered at ${attendantPickup.pickup_name}. We are working to ship it back to you.\nFor more information contact ${attendantPickup.phone_number}.`
       });
 
-      res.status(404).json({ message: "Wrong Destination Parcel Rerouting " });
-
-
+      res.status(404).json({ message: "Wrong Destination Parcel Rerouting" });
       return;
     }
-    if (parcel?.status !== "In Transit") {
-      res.status(404).json({ message: "Parcel  Code Error Kindly  trace the  parcel in the Reports  " });
+
+    if (parcel.status !== "In Transit") {
+      res.status(400).json({ message: "Parcel Code Error: Kindly trace the parcel in Reports" });
       return;
     }
+
+    // 2. Mark Parcel as Arrived
     await Parcels.findOneAndUpdate({ code: id }, {
       status: "Pending Collection",
       currentDriver: null,
       currentTruck: null
     });
-    const pickupId = parcel.sentFrom._id.toString();
+
+    // 3. CHECK: Is this the driver's last parcel for this specific pickup?
+    if (driver) {
+      const remainingForDriver = await Parcels.countDocuments({
+        currentDriver: driver._id,
+        pickup: targetPickupId,
+        status: "In Transit",
+        deletedAt: null
+      });
+
+      if (remainingForDriver === 0 && driver.FCM_token) {
+        // Notify the driver specifically
+        await sendPushNotification({
+          token: driver.FCM_token, // Direct push to driver
+          data: {},
+          title: 'Delivery Complete',
+          body: `All parcels for ${parcel.pickup.pickup_name} have been received. Your manifest for this stop is now clear!`
+        });
+      }
+    }
+
+    // 4. Notifications (Socket, SMS, Journey)
+    const pickupId = parcel.sentFrom?._id.toString();
     const pickup = parcel.pickup._id.toString();
     const io = getSocketIo();
+
     io.to(`pickup_${pickupId}`).emit("Parcel-change", parcel);
     io.to(`pickup_${pickup}`).emit("Parcel-change", parcel);
-    if (!parcel) {
-      res.status(404).json({ message: "Parcel not found" });
-      return;
-    }
+
     const sentToReceiver = await sendTextMessage(
-      `Hello ${parcel.receiver_name},Your Parcel has arrived at ${parcel.pickup.pickup_name}.Parcel Code ${parcel.code}.Please  come with your National ID  for pick-up.`,
+      `Hello ${parcel.receiver_name}, Your Parcel has arrived at ${parcel.pickup.pickup_name}. Parcel Code ${parcel.code}. Please come with your National ID for pick-up.`,
       `${parcel.receiver_phone}`,
       parcel._id,
       "parcel Delivery"
-    )
+    );
+
     if (!sentToReceiver.success) {
-      const sentToSender = await sendTextMessage(
+      await sendTextMessage(
         `Hello ${parcel.sender_name}, we were unable to reach the receiver (${parcel.receiver_name}). Please inform them that their parcel (Code: ${parcel.code}) is ready for pickup at ${parcel.pickup.pickup_name}.`,
         `${parcel.sender_phone}`,
         parcel._id,
         "fallback notification"
       );
-
-      // Optional: log or handle if fallback also fails
-      if (!sentToSender.success) {
-        console.error("Both receiver and sender SMS failed");
-      }
     }
+
     await ParcelJourneys.findOneAndUpdate(
       { parcel_id: parcel._id },
-      { ArrivedAt: new Date(), deliveredTo: req?.user.userId },
+      { ArrivedAt: new Date(), deliveredTo: req.user.userId },
     );
 
-    res.json({ ok: true, message: "Parcel arrived at destination" });
+    res.json({ ok: true, message: "Parcel arrived and driver notified" });
 
   } catch (error: any) {
     console.log(error);
@@ -679,7 +709,7 @@ export const collectParcel = async (req: Request | any, res: Response): Promise<
     );
     const pickupId = parcel.sentFrom._id.toString();
 
-  
+
     await sendTopicNotification({
       topic: `pickup_${pickupId}_attendants`,
       socket_topic_id: `pickup_${pickupId}`,
@@ -902,5 +932,110 @@ export const getFullDashboard = async (
     });
   }
 };
+
+
+
+export const getDriverPickupStats = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const driverId = req.params.id;
+    const filter = (req.query.filter as string) || "today";
+
+    const timezone = "Africa/Nairobi";
+    let start: Date;
+    let end: Date;
+
+    // Time logic
+    switch (filter) {
+      case "week":
+        start = moment.tz(timezone).startOf("week").toDate();
+        end = moment.tz(timezone).endOf("week").toDate();
+        break;
+      case "month":
+        start = moment.tz(timezone).startOf("month").toDate();
+        end = moment.tz(timezone).endOf("month").toDate();
+        break;
+      case "year":
+        start = moment.tz(timezone).startOf("year").toDate();
+        end = moment.tz(timezone).endOf("year").toDate();
+        break;
+      case "today":
+      default:
+        start = moment.tz(timezone).startOf("day").toDate();
+        end = moment.tz(timezone).endOf("day").toDate();
+        break;
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(driverId)) {
+      res.status(400).json({ error: "Invalid driverId" });
+      return;
+    }
+
+    const results = await Parcels.aggregate([
+      // 1. Filter by Driver, Status: "In Transit", and the Date range
+      {
+        $match: {
+          currentDriver: new mongoose.Types.ObjectId(driverId),
+          status: "In Transit",
+          deletedAt: null,
+          createdAt: { $gte: start, $lte: end } // Applying the date filter
+        }
+      },
+
+      // 2. Join with the Pickup collection
+      {
+        $lookup: {
+          from: "pickup_tbs",
+          localField: "pickup",
+          foreignField: "_id",
+          as: "pickupDetails"
+        }
+      },
+
+      // 3. Flatten the array
+      { $unwind: "$pickupDetails" },
+
+      // 4. Group by pickup station
+      {
+        $group: {
+          _id: "$pickup",
+          pickup_name: { $first: "$pickupDetails.pickup_name" }, // Get name only
+          totalParcels: { $sum: 1 },
+          parcels: {
+            $push: {
+              _id: "$_id",
+              sender_name: "$sender_name",
+              receiver_name: "$receiver_name",
+              code: "$code",
+              status: "$status"
+            }
+          }
+        }
+      },
+
+      // 5. Clean up the output to only return ID and Name in the header
+      {
+        $project: {
+          _id: 1,
+          pickup_name: 1,
+          totalParcels: 1,
+          parcels: 1
+        }
+      },
+
+      { $sort: { pickup_name: 1 } }
+    ]);
+
+    res.json(results);
+    return
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch driver pickup stats" });
+  }
+};
+
+
 
 
