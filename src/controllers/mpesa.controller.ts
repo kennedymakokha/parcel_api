@@ -9,139 +9,309 @@ import { PickuUpModel } from "../models/pickups.model";
 
 
 
-export const mpesa_callback = async (req: Request | any, res: Response | any) => {
+export const mpesa_callback = async (req: Request, res: Response | any) => {
     try {
+        // console.log(
+        //     "M-PESA CALLBACK:",
+        //     JSON.stringify(req.body, null, 2)
+        // );
 
-        let io = await getSocketIo()
-        const Logs = await MpesaLogs.find({
-            MerchantRequestID: req.body.Body?.stkCallback?.MerchantRequestID
-        })
+        const io = await getSocketIo();
 
-        let updated
-        for (let i = 0; i < Logs.length; i++) {
+        const stkCallback = req.body?.Body?.stkCallback;
 
-            updated = await MpesaLogs.findOneAndUpdate(
-                {
-                    _id: Logs[i]._id
-                }, {
-                log: JSON.stringify(req.body), ResultDesc: req.body.Body?.stkCallback?.ResultDesc,
-                ResponseCode: req.body.Body?.stkCallback?.ResultCode,
-                MpesaReceiptNumber: req.body.Body?.stkCallback?.CallbackMetadata?.Item[1]?.Value
-            }, { new: true, useFindAndModify: false })
-            return
-            // const vendor: any = await User.findOne({ _id: updated.vendor })
-            // const user: any = await User.findOne({ _id: updated.user })
-
-            // if (req.body.Body?.stkCallback?.ResultCode === 0) {
-            //     let current = user?.amount | 0
-            //     let newAmount = current + updated?.amount
-            //     let currentvendor = vendor?.amount | 0
-            //     let newAmountvendor = currentvendor + updated.amount
-            //     let userPoints: any = user?.points | 0
-            //     let newpoints = userPoints + 0.01 * parseFloat(updated.amount)
-            //     await User.findOneAndUpdate({ _id: updated.vendor, role: "admin" }, { amount: newAmountvendor }, { new: true, useFindAndModify: false })
-            //     await User.findOneAndUpdate({ _id: updated.user, role: "client" }, { amount: newAmount, points: newpoints }, { new: true, useFindAndModify: false })
-            //     // sendFcmPush(`${vendor?.fcmToken}`, `${updated.phone_number} Transaction Success!`, `${updated.ResultDesc}`);
-            //     io?.to(`${vendor._id}`).emit("payment-updated", newAmount)
-            //     return
-            // }
-
+        if (!stkCallback) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid callback body"
+            });
         }
-    } catch (error) {
-        console.log(error);
-        res
-            .status(400)
-            .json({ success: false, message: "operation failed ", error });
-        return
-    }
-}
-export const makePayment = async (req: Request | any, res: Response | any) => {
-    try {
 
-        let io = await getSocketIo()
+        const merchantRequestID = stkCallback.MerchantRequestID;
+
+        const callbackItems = stkCallback?.CallbackMetadata?.Item || [];
+
+        const receipt =
+            callbackItems.find(
+                (item: any) => item.Name === "MpesaReceiptNumber"
+            )?.Value || "";
+
+        const amount =
+            callbackItems.find(
+                (item: any) => item.Name === "Amount"
+            )?.Value || 0;
+
+        const phone =
+            callbackItems.find(
+                (item: any) => item.Name === "PhoneNumber"
+            )?.Value || "";
+
+        const updated = await MpesaLogs.findOneAndUpdate(
+            {
+                MerchantRequestID: merchantRequestID
+            },
+            {
+                log: JSON.stringify(req.body),
+                ResultDesc: stkCallback.ResultDesc,
+                ResponseCode: Number(stkCallback.ResultCode),
+                MpesaReceiptNumber: receipt,
+                amount,
+                phone_number: phone,
+                status:
+                    Number(stkCallback.ResultCode) === 0
+                        ? "complete"
+                        : "canceled"
+            },
+            {
+                new: true
+            }
+        );
+
+        // console.log("UPDATED LOG:", updated);
+
+        // socket updates
+        if (updated) {
+            io?.to(`${updated.pickup}`).emit(
+                "payment-callback",
+                updated
+            );
+
+            io?.to(`${updated.pickup}`).emit(
+                "payment-end",
+                Number(stkCallback.ResultCode) === 0
+            );
+        }
+
+        // IMPORTANT:
+        // Always respond to Safaricom
+        return res.status(200).json({
+            ResultCode: 0,
+            ResultDesc: "Accepted"
+        });
+
+    } catch (error) {
+        console.log("CALLBACK ERROR:", error);
+
+        // IMPORTANT:
+        // Always return 200 to Safaricom
+        return res.status(200).json({
+            ResultCode: 0,
+            ResultDesc: "Accepted"
+        });
+    }
+};
+
+
+export const makePayment = async (
+    req: Request | any,
+    res: Response | any
+) => {
+    try {
+        const io = await getSocketIo();
 
         const { amount, phone_number, pickup_id } = req.body;
-        console.log(req.body);
-        const pickup: any = await PickuUpModel.findById(pickup_id)
+
+        // console.log("PAYMENT REQUEST:", req.body);
+
+        const pickup: any = await PickuUpModel.findById(
+            pickup_id
+        );
+
+        if (!pickup) {
+            return res.status(404).json({
+                success: false,
+                message: "Pickup not found"
+            });
+        }
+
         const pickupId = pickup_id.toString();
-        const response = await Mpesa_stk(phone_number, Number(amount), req.user._id, pickup);
-        const merchantRequestId = response.MerchantRequestID;
-        let logs = await MpesaLogs.findOne({ MerchantRequestID: merchantRequestId });
-        io?.to(`${pickup._id}`).emit("payment-start", true)
+
+        // Send STK Push
+        const response = await Mpesa_stk(
+            phone_number,
+            Number(amount),
+            req.user._id,
+            pickup
+        );
+
+        const merchantRequestId =
+            response?.MerchantRequestID;
+
+        if (!merchantRequestId) {
+            return res.status(400).json({
+                success: false,
+                message: "Failed to initiate payment"
+            });
+        }
+
+        // IMPORTANT:
+        // create/update pending log immediately
+        await MpesaLogs.findOneAndUpdate(
+            {
+                MerchantRequestID: merchantRequestId
+            },
+            {
+                MerchantRequestID: merchantRequestId,
+                CheckoutRequestID:
+                    response.CheckoutRequestID,
+                phone_number,
+                amount,
+                pickup: pickup._id,
+                user: req.user._id,
+                log: "",
+                status: "pending",
+                ResponseCode: null
+            },
+            {
+                upsert: true,
+                new: true,
+                runValidators: true
+            }
+        );
+
+        io?.to(`${pickup._id}`).emit(
+            "payment-start",
+            true
+        );
+
+        // polling for callback
         const maxRetries = 20;
         const retryInterval = 5000;
+
         let retryCount = 0;
-        while (logs?.log === '' && retryCount < maxRetries) {
+
+        let logs: any = null;
+
+        while (retryCount < maxRetries) {
+
+            logs = await MpesaLogs.findOne({
+                MerchantRequestID: merchantRequestId
+            });
+
+            // console.log(
+            //     `Retry ${retryCount + 1}`,
+            //     logs
+            // );
+
+            // callback updated successfully
+            if (
+                logs &&
+                logs.log &&
+                logs.status !== "pending"
+            ) {
+                break;
+            }
+
             retryCount++;
-            console.log(`Retrying log fetch: attempt ${retryCount}`);
-            await new Promise(resolve => setTimeout(resolve, retryInterval));
-            logs = await MpesaLogs.findOne({ MerchantRequestID: merchantRequestId });
+
+            await new Promise((resolve) =>
+                setTimeout(resolve, retryInterval)
+            );
         }
 
-        if (!logs || logs.log === '') {
+        // timeout
+        if (
+            !logs ||
+            !logs.log ||
+            logs.status === "pending"
+        ) {
+
+            io?.to(`${pickup._id}`).emit(
+                "payment-end",
+                false
+            );
+
             await sendTopicNotification({
                 topic: `pickup_${pickupId}_attendants`,
                 socket_topic_id: `pickup_${pickupId}`,
                 event_name: "Payment Failure",
                 audience: `${pickup.pickup_name}`,
-                title: 'Payment Failure',
-                body: `Hello ${pickup.pickup_name}\nThe payment made by ${phone_number} was  not successfull(${logs.message})\nKindly reach out to ${req.user.name} and  confirm this  payment.`
+                title: "Payment Failure",
+                body:
+                    `Hello ${pickup.pickup_name}\n` +
+                    `The payment made by ${phone_number} ` +
+                    `was not successful or callback timed out.\n` +
+                    `Kindly confirm the transaction manually.`
             });
 
-            res.status(500).json({ message: "Payment not verified. Please try again later." });
-
-            io?.to(`${pickup._id}`).emit("payment-end", false)
-            return
+            return res.status(408).json({
+                success: false,
+                message:
+                    "Payment verification timed out. Please confirm transaction."
+            });
         }
 
-        if (logs.ResponseCode !== 0) {
-            res.status(400).json({ message: logs.ResultDesc });
+        // failed payment
+        if (Number(logs.ResponseCode) !== 0) {
+
+            io?.to(`${pickup._id}`).emit(
+                "payment-end",
+                false
+            );
+
             await sendTopicNotification({
                 topic: `pickup_${pickupId}_attendants`,
                 socket_topic_id: `pickup_${pickupId}`,
                 event_name: "Payment Failure",
                 audience: `${pickup.pickup_name}`,
-                title: 'Payment Failure',
-                body: `Hello ${pickup.pickup_name}\nThe payment made by ${phone_number} was  not successfull(${logs.ResultDesc})\nKindly reach out to ${req.user.name} and  confirm this  payment.`
+                title: "Payment Failure",
+                body:
+                    `Hello ${pickup.pickup_name}\n` +
+                    `The payment made by ${phone_number} ` +
+                    `was not successful (${logs.ResultDesc}).\n` +
+                    `Kindly reach out to ${req.user.name}.`
             });
 
-            io?.to(`${pickup._id}`).emit("payment-end", false)
-            // sendFcmPush(`${agent?.fcmToken}`, `${logs.phone_number} Transaction Status!`, `${logs.ResultDesc}`);
-            return
-        } else {
-            const { MerchantRequestID,
-                CheckoutRequestID,
-                phone_number,
-                ResponseCode,
-                status,
-                amount,
-                MpesaReceiptNumber,
-                ResultDesc } = logs
-            res.status(200).json({
-                MerchantRequestID,
-                CheckoutRequestID,
-                phone_number,
-                ResponseCode,
-                status,
-                amount,
-                MpesaReceiptNumber,
-                ResultDesc,
-                message: ResultDesc,
+            return res.status(400).json({
+                success: false,
+                message: logs.ResultDesc || "Payment failed",
+                data: logs
             });
-
-            let io = getSocketIo()
-            io?.to(`${pickup._id}`).emit("payment-end", false)
-            return
         }
+
+        // success
+        io?.to(`${pickup._id}`).emit(
+            "payment-end",
+            true
+        );
+
+        return res.status(200).json({
+            success: true,
+            message:
+                logs.ResultDesc || "Payment successful",
+
+            MerchantRequestID:
+                logs.MerchantRequestID,
+
+            CheckoutRequestID:
+                logs.CheckoutRequestID,
+
+            phone_number: logs.phone_number,
+
+            ResponseCode: logs.ResponseCode,
+
+            status: logs.status,
+
+            amount: logs.amount,
+
+            MpesaReceiptNumber:
+                logs.MpesaReceiptNumber,
+
+            ResultDesc: logs.ResultDesc
+        });
 
     } catch (error: any) {
-        console.error("Wallet operation error:", error);
-        res.status(400).json({
+
+        console.error(
+            "Wallet operation error:",
+            error
+        );
+
+        return res.status(400).json({
             success: false,
             message: "Operation failed",
             error: error?.message || error
         });
-        return
     }
 };
 

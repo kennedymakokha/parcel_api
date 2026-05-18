@@ -1,6 +1,5 @@
 import { Router } from "express";
-import { Bulk, UpdatedSince, } from "../controllers/clocks.controller";
-import { CreatePay, dailyReconciliations } from "../controllers/payments.controller";
+import { CreatePay, dailyReconciliations, getDailyReconciliationParcels } from "../controllers/payments.controller";
 
 const router = Router();
 
@@ -8,7 +7,7 @@ const router = Router();
 
 
 router.post("/", CreatePay);
-router.get("/", UpdatedSince);
+router.get("/", getDailyReconciliationParcels);
 router.get("/daily/reconciliations", dailyReconciliations);
 
 

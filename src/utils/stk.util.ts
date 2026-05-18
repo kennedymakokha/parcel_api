@@ -80,7 +80,7 @@ export const Mpesa_stk = async (
                 PartyA: phone,
                 PartyB: pickup.shortCode,
                 PhoneNumber: phone,
-                CallBackURL: `https://api.mtandao.co.ke/api/payments/callback`,
+                CallBackURL: `https://api.mtandao.co.ke/api/m-pesa/callback`,
                 AccountReference: "Mtadao Pack Ltd",
                 TransactionDesc: "Payment delivery of *",
 

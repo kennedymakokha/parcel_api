@@ -1,8 +1,8 @@
 
 import { Request, Response } from "express";
-import { Clocks } from "../models/clocks.model";
 import { PaymentModel } from "../models/payments.model";
-
+import moment from "moment-timezone";
+import { Parcels } from "../models/parcel.model";
 
 
 
@@ -58,14 +58,14 @@ export const CreatePay = async (req: Request | any, res: Response) => {
 
         } else {
 
-            
+
             // SINGLE PAYMENT
             paymentsToSave.push({
 
                 parcel_id: data.parcel,
                 method: data.payments[0].method,
-                amount: Number(data.payments[0].amount ),
-            
+                amount: Number(data.payments[0].amount),
+
                 createdBy: req.user.userId,
 
                 customer_phone:
@@ -104,7 +104,105 @@ export const CreatePay = async (req: Request | any, res: Response) => {
         });
     }
 };
-export const dailyReconciliations = async (req: Request | any, res: Response | any) => {
+export const dailyReconciliations = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const filter = (req.query.filter as string) || "today";
+
+        const timezone = "Africa/Nairobi";
+
+        let start: Date;
+        let end: Date;
+
+        switch (filter) {
+            case "week":
+                start = moment.tz(timezone).startOf("week").toDate();
+                end = moment.tz(timezone).endOf("week").toDate();
+                break;
+
+            case "month":
+                start = moment.tz(timezone).startOf("month").toDate();
+                end = moment.tz(timezone).endOf("month").toDate();
+                break;
+
+            case "year":
+                start = moment.tz(timezone).startOf("year").toDate();
+                end = moment.tz(timezone).endOf("year").toDate();
+                break;
+
+            case "today":
+            default:
+                start = moment.tz(timezone).startOf("day").toDate();
+                end = moment.tz(timezone).endOf("day").toDate();
+                break;
+        }
+
+        const cashResult = await PaymentModel.aggregate([
+            {
+                $match: {
+                    method: "CASH",
+                    createdAt: {
+                        $gte: start,
+                        $lte: end,
+                    },
+                },
+            },
+            {
+                $group: {
+                    _id: null,
+                    total: {
+                        $sum: "$amount",
+                    },
+                },
+            },
+        ]);
+
+        const mpesaResult = await PaymentModel.aggregate([
+            {
+                $match: {
+                    method: "MPESA",
+                    createdAt: {
+                        $gte: start,
+                        $lte: end,
+                    },
+                },
+            },
+            {
+                $group: {
+                    _id: null,
+                    total: {
+                        $sum: "$amount",
+                    },
+                },
+            },
+        ]);
+
+        const cashTotal = cashResult[0]?.total || 0;
+        const mpesaTotal = mpesaResult[0]?.total || 0;
+
+        const totalRevenue = cashTotal + mpesaTotal;
+
+        res.status(200).json({
+            filter,
+            cashTotal,
+            mpesaTotal,
+            totalRevenue,
+            start,
+            end,
+        });
+    } catch (err: any) {
+        console.log(err);
+
+        res.status(500).json({
+            error: err.message,
+        });
+    }
+};
+
+
+export const dailyReconciliationd = async (req: Request | any, res: Response | any) => {
     try {
 
         const cashTotal = await PaymentModel.aggregate([
@@ -138,6 +236,163 @@ export const dailyReconciliations = async (req: Request | any, res: Response | a
         console.log(err)
         res.status(500).json({ error: err.message });
     }
+};
+
+
+export const getDailyReconciliationParcels = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const filter = (req.query.filter as string) || "today";
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+
+    const skip = (page - 1) * limit;
+
+    const timezone = "Africa/Nairobi";
+
+    let start: Date;
+    let end: Date;
+
+    switch (filter) {
+      case "week":
+        start = moment.tz(timezone).startOf("week").toDate();
+        end = moment.tz(timezone).endOf("week").toDate();
+        break;
+
+      case "month":
+        start = moment.tz(timezone).startOf("month").toDate();
+        end = moment.tz(timezone).endOf("month").toDate();
+        break;
+
+      case "year":
+        start = moment.tz(timezone).startOf("year").toDate();
+        end = moment.tz(timezone).endOf("year").toDate();
+        break;
+
+      case "today":
+      default:
+        start = moment.tz(timezone).startOf("day").toDate();
+        end = moment.tz(timezone).endOf("day").toDate();
+        break;
+    }
+
+    const payments = await PaymentModel.aggregate([
+      // Filter by date
+      {
+        $match: {
+          createdAt: {
+            $gte: start,
+            $lte: end,
+          },
+        },
+      },
+
+      // Join parcel
+      {
+        $lookup: {
+          from: "parcels_tbs",
+          localField: "parcel_id",
+          foreignField: "_id",
+          as: "parcel",
+        },
+      },
+
+      {
+        $unwind: "$parcel",
+      },
+
+      // Join FROM pickup
+      {
+        $lookup: {
+          from: "pickup_tbs",
+          localField: "parcel.sentFrom",
+          foreignField: "_id",
+          as: "fromPickup",
+        },
+      },
+
+      {
+        $unwind: {
+          path: "$fromPickup",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Join TO pickup
+      {
+        $lookup: {
+          from: "pickup_tbs",
+          localField: "parcel.pickup",
+          foreignField: "_id",
+          as: "toPickup",
+        },
+      },
+
+      {
+        $unwind: {
+          path: "$toPickup",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // Shape data
+      {
+        $project: {
+          _id: 1,
+          amount: 1,
+          method: 1,
+          createdAt: 1,
+
+          code: "$parcel.code",
+          weight: "$parcel.weight",
+
+          from: "$fromPickup.short_code",
+          to: "$toPickup.short_code",
+        },
+      },
+
+      {
+        $sort: {
+          createdAt: -1,
+        },
+      },
+
+      {
+        $skip: skip,
+      },
+
+      {
+        $limit: limit,
+      },
+    ]);
+
+    const total = await PaymentModel.countDocuments({
+      createdAt: {
+        $gte: start,
+        $lte: end,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      filter,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      data: payments,
+    });
+  } catch (err: any) {
+    console.log(err);
+
+    res.status(500).json({
+      error: err.message,
+    });
+  }
 };
 
 

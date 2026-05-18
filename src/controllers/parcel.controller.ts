@@ -17,12 +17,13 @@ import { validateParcelInput } from "../validations/parcel.validations";
 import { CustomError } from "../utils/custom_error.util";
 import { generateParcelCode } from "../utils/generateParcelCodes";
 import { getDateRangeByFilter } from "../utils/timezone.util";
+// import { buildInvoicePayload, submitInvoice } from "../utils/etimsService";
 
 
 export const registerParcel = async (req: Request | any, res: Response): Promise<void> => {
   const session = await mongoose.startSession();
   session.startTransaction();
-
+  const { business: { kra_pin, business_name } } = req.user
   try {
     const { sender, receiver, parcel } = req.body;
 
@@ -64,7 +65,21 @@ export const registerParcel = async (req: Request | any, res: Response): Promise
     const pickupId = newParcel.sentFrom._id.toString();
     const io = getSocketIo();
     io.to(`pickup_${pickupId}`).emit("Parcel-change", newParcel);
-
+    // const payload = buildInvoicePayload({
+    //   invoiceNumber:savedParcel.code,
+    //   business_name,
+    //   kra_pin,
+    //   items: [{
+    //     description: "parcel ferrying",
+    //     quantity: 1,
+    //     unitPrice: 1,
+    //     taxRate: 2,
+    //   }],
+    //   totalAmount: 1,
+    //   taxAmount: 0.02,
+    // });
+    // const result = await submitInvoice(payload);
+    // res.json({ success: true, result });
     await session.commitTransaction();
 
     res.status(201).json({

@@ -50,7 +50,7 @@ const ParcelSchema = new mongoose.Schema(
       type: String,
       unique: true
     },
-    weight: String,
+    weight: { type: String },
     instructions: String,
     fragile: { type: Boolean, default: false },
     destination: { type: String, enum: ["pickup", "dropoff"], default: "pickup" },

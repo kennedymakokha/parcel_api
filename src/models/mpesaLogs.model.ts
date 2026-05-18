@@ -36,7 +36,11 @@ const MpesaLogsSchema = new Schema({
     },
     status: {
         type: String,
-        enum: ["pending", "canceled", "complete",],
+        enum: [
+            "pending",
+            "failed",
+            "success"
+        ],
         default: "pending"
     },
     amount: {

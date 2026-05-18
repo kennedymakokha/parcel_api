@@ -1,7 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 
 const PaymentSchema = new mongoose.Schema({
- 
+
   parcel_id: {
     type: Schema.Types.ObjectId,
     ref: 'parcels_tb'
@@ -20,7 +20,7 @@ const PaymentSchema = new mongoose.Schema({
     ref: 'pickup_tb'
   },
   createdBy: String
-});
+}, { timestamps: true });
 
 
 export const PaymentModel = mongoose.model("Payment_tb", PaymentSchema);
